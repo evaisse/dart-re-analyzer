@@ -2,6 +2,24 @@ use crate::analyzer::Rule;
 use crate::error::{Diagnostic, Location, Result, RuleCategory, Severity};
 use regex::Regex;
 use std::path::Path;
+use std::sync::OnceLock;
+
+// Static regex patterns compiled once
+fn class_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r"(?m)^[\s]*(?:abstract\s+)?class\s+([a-zA-Z_][a-zA-Z0-9_]*)")
+            .expect("Invalid regex pattern")
+    })
+}
+
+fn field_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r"(?m)^\s*(?:final\s+|const\s+|static\s+)?(?:late\s+)?[A-Z][a-zA-Z0-9<>,\s]*\s+(_[a-zA-Z][a-zA-Z0-9_]*)\s*[;=]")
+            .expect("Invalid regex pattern")
+    })
+}
 
 // Rule: Class names should use CamelCase
 pub struct CamelCaseClassNameRule;
@@ -13,8 +31,7 @@ impl Rule for CamelCaseClassNameRule {
 
     fn check(&self, file_path: &Path, content: &str) -> Result<Vec<Diagnostic>> {
         let mut diagnostics = Vec::new();
-        let class_regex = Regex::new(r"(?m)^[\s]*(?:abstract\s+)?class\s+([a-zA-Z_][a-zA-Z0-9_]*)")
-            .unwrap();
+        let class_regex = class_regex();
 
         for (line_num, line) in content.lines().enumerate() {
             if let Some(caps) = class_regex.captures(line) {
@@ -98,23 +115,20 @@ impl Rule for PrivateFieldUnderscoreRule {
         "private_field_underscore"
     }
 
-    fn check(&self, file_path: &Path, content: &str) -> Result<Vec<Diagnostic>> {
-        let mut diagnostics = Vec::new();
+    fn check(&self, _file_path: &Path, content: &str) -> Result<Vec<Diagnostic>> {
+        let diagnostics = Vec::new();
         
-        // This is a simplified check - a real implementation would use AST parsing
-        let field_regex = Regex::new(r"(?m)^\s*(?:final\s+|const\s+|static\s+)?(?:late\s+)?[A-Z][a-zA-Z0-9<>,\s]*\s+(_[a-zA-Z][a-zA-Z0-9_]*)\s*[;=]")
-            .unwrap();
-
-        for (line_num, line) in content.lines().enumerate() {
-            if let Some(caps) = field_regex.captures(line) {
-                if let Some(field_name) = caps.get(1) {
-                    let name = field_name.as_str();
-                    if name.starts_with('_') && !line.trim_start().starts_with("//") {
-                        // This is actually good - private fields should start with underscore
-                        // This rule is here as an example; in practice, you'd check the opposite
-                        continue;
-                    }
-                }
+        // Note: This is a placeholder implementation
+        // A full implementation would require AST parsing to properly distinguish
+        // between private and public fields based on Dart's visibility rules
+        // (fields without _ are public, fields with _ are private)
+        
+        // The simple regex check is insufficient because it can't determine
+        // the intent - whether a field without _ should be private or not
+        
+        for (_line_num, line) in content.lines().enumerate() {
+            if let Some(_caps) = field_regex().captures(line) {
+                // Placeholder: would need semantic analysis here
             }
         }
 

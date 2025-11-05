@@ -1,8 +1,41 @@
 use crate::analyzer::Rule;
 use crate::error::{Diagnostic, Location, Result, RuleCategory, Severity};
 use regex::Regex;
-use std::collections::HashSet;
 use std::path::Path;
+use std::sync::OnceLock;
+
+// Static regex patterns compiled once
+fn dynamic_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| Regex::new(r"\bdynamic\b").expect("Invalid regex pattern"))
+}
+
+fn catch_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r"catch\s*\([^)]*\)\s*\{\s*\}").expect("Invalid regex pattern")
+    })
+}
+
+fn import_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r#"(?m)^import\s+['"]([^'"]+)['"](?:\s+as\s+(\w+))?;"#)
+            .expect("Invalid regex pattern")
+    })
+}
+
+fn print_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| Regex::new(r"\bprint\s*\(").expect("Invalid regex pattern"))
+}
+
+fn null_check_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r"([a-zA-Z_][a-zA-Z0-9_]*)\!\.").expect("Invalid regex pattern")
+    })
+}
 
 // Rule: Avoid using dynamic type
 pub struct AvoidDynamicRule;
@@ -14,7 +47,6 @@ impl Rule for AvoidDynamicRule {
 
     fn check(&self, file_path: &Path, content: &str) -> Result<Vec<Diagnostic>> {
         let mut diagnostics = Vec::new();
-        let dynamic_regex = Regex::new(r"\bdynamic\b").unwrap();
 
         for (line_num, line) in content.lines().enumerate() {
             // Skip comments
@@ -22,7 +54,7 @@ impl Rule for AvoidDynamicRule {
                 continue;
             }
 
-            for mat in dynamic_regex.find_iter(line) {
+            for mat in dynamic_regex().find_iter(line) {
                 diagnostics.push(
                     Diagnostic::new(
                         self.name(),
@@ -56,10 +88,9 @@ impl Rule for AvoidEmptyCatchRule {
 
     fn check(&self, file_path: &Path, content: &str) -> Result<Vec<Diagnostic>> {
         let mut diagnostics = Vec::new();
-        let catch_regex = Regex::new(r"catch\s*\([^)]*\)\s*\{\s*\}").unwrap();
 
         for (line_num, line) in content.lines().enumerate() {
-            if let Some(mat) = catch_regex.find(line) {
+            if let Some(mat) = catch_regex().find(line) {
                 diagnostics.push(
                     Diagnostic::new(
                         self.name(),
@@ -84,6 +115,8 @@ impl Rule for AvoidEmptyCatchRule {
 }
 
 // Rule: Detect unused imports
+// Note: This is a simplified heuristic-based implementation
+// A full implementation would require semantic analysis with an AST
 pub struct UnusedImportRule;
 
 impl Rule for UnusedImportRule {
@@ -93,13 +126,12 @@ impl Rule for UnusedImportRule {
 
     fn check(&self, file_path: &Path, content: &str) -> Result<Vec<Diagnostic>> {
         let mut diagnostics = Vec::new();
-        let import_regex = Regex::new(r#"(?m)^import\s+['"]([^'"]+)['"](?:\s+as\s+(\w+))?;"#).unwrap();
         
         let mut imports = Vec::new();
         
         // Collect all imports
         for (line_num, line) in content.lines().enumerate() {
-            if let Some(caps) = import_regex.captures(line) {
+            if let Some(caps) = import_regex().captures(line) {
                 let import_path = caps.get(1).unwrap().as_str();
                 let alias = caps.get(2).map(|m| m.as_str());
                 
@@ -117,6 +149,11 @@ impl Rule for UnusedImportRule {
         }
         
         // Check if each import is used in the file
+        // Note: This is a simple heuristic that checks for literal string matches
+        // It may produce false positives for:
+        // - Imports used only in type annotations
+        // - Imports used through qualified access
+        // - Transitive dependencies
         for (line_num, symbol, import_line) in imports {
             let mut is_used = false;
             
@@ -166,7 +203,6 @@ impl Rule for AvoidPrintRule {
 
     fn check(&self, file_path: &Path, content: &str) -> Result<Vec<Diagnostic>> {
         let mut diagnostics = Vec::new();
-        let print_regex = Regex::new(r"\bprint\s*\(").unwrap();
 
         for (line_num, line) in content.lines().enumerate() {
             // Skip comments
@@ -174,7 +210,7 @@ impl Rule for AvoidPrintRule {
                 continue;
             }
 
-            for mat in print_regex.find_iter(line) {
+            for mat in print_regex().find_iter(line) {
                 diagnostics.push(
                     Diagnostic::new(
                         self.name(),
@@ -208,7 +244,6 @@ impl Rule for AvoidNullCheckOnNullableRule {
 
     fn check(&self, file_path: &Path, content: &str) -> Result<Vec<Diagnostic>> {
         let mut diagnostics = Vec::new();
-        let null_check_regex = Regex::new(r"([a-zA-Z_][a-zA-Z0-9_]*)\!\.").unwrap();
 
         for (line_num, line) in content.lines().enumerate() {
             // Skip comments
@@ -216,7 +251,7 @@ impl Rule for AvoidNullCheckOnNullableRule {
                 continue;
             }
 
-            for mat in null_check_regex.find_iter(line) {
+            for mat in null_check_regex().find_iter(line) {
                 diagnostics.push(
                     Diagnostic::new(
                         self.name(),
