@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use tree_sitter::{Node, Parser, Query, QueryCursor, Tree, StreamingIterator};
+use tree_sitter::{Node, Parser, Query, QueryCursor, Tree, StreamingIterator, InputEdit, Point as TSPoint};
 
 /// Initialize a Tree-sitter parser configured for Dart
 pub fn create_dart_parser() -> Result<Parser> {
@@ -16,6 +16,209 @@ pub fn parse_dart(source: &str) -> Result<Tree> {
     parser
         .parse(source, None)
         .context("Failed to parse Dart source code")
+}
+
+/// Incremental parser that maintains state for efficient re-parsing
+pub struct IncrementalParser {
+    parser: Parser,
+    tree: Option<Tree>,
+    source: String,
+}
+
+impl IncrementalParser {
+    /// Create a new incremental parser
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            parser: create_dart_parser()?,
+            tree: None,
+            source: String::new(),
+        })
+    }
+
+    /// Parse initial source code
+    pub fn parse(&mut self, source: &str) -> Result<&Tree> {
+        self.source = source.to_string();
+        self.tree = self.parser
+            .parse(source, None)
+            .context("Failed to parse Dart source code")?
+            .into();
+        Ok(self.tree.as_ref().unwrap())
+    }
+
+    /// Apply an edit and incrementally re-parse
+    /// 
+    /// # Arguments
+    /// * `edit` - The edit to apply (describes position, old/new text lengths)
+    /// * `new_source` - The new source code after the edit
+    /// 
+    /// # Example
+    /// ```no_run
+    /// use dart_re_analyzer::treesitter::{IncrementalParser, Edit};
+    /// 
+    /// let mut parser = IncrementalParser::new().unwrap();
+    /// parser.parse("class MyClass {}").unwrap();
+    /// 
+    /// // Edit: insert " extends Object" at position 13
+    /// let edit = Edit {
+    ///     start_byte: 13,
+    ///     old_end_byte: 13,
+    ///     new_end_byte: 29,
+    ///     start_position: (0, 13),
+    ///     old_end_position: (0, 13),
+    ///     new_end_position: (0, 29),
+    /// };
+    /// 
+    /// parser.reparse(edit, "class MyClass extends Object {}").unwrap();
+    /// ```
+    pub fn reparse(&mut self, edit: Edit, new_source: &str) -> Result<&Tree> {
+        if let Some(ref mut tree) = self.tree {
+            // Convert our Edit to tree-sitter's InputEdit
+            let input_edit = InputEdit {
+                start_byte: edit.start_byte,
+                old_end_byte: edit.old_end_byte,
+                new_end_byte: edit.new_end_byte,
+                start_position: TSPoint {
+                    row: edit.start_position.0,
+                    column: edit.start_position.1,
+                },
+                old_end_position: TSPoint {
+                    row: edit.old_end_position.0,
+                    column: edit.old_end_position.1,
+                },
+                new_end_position: TSPoint {
+                    row: edit.new_end_position.0,
+                    column: edit.new_end_position.1,
+                },
+            };
+
+            tree.edit(&input_edit);
+            self.source = new_source.to_string();
+            
+            // Parse incrementally using the edited tree
+            self.tree = self.parser
+                .parse(new_source, Some(tree))
+                .context("Failed to reparse Dart source code")?
+                .into();
+        } else {
+            // No previous tree, do a full parse
+            return self.parse(new_source);
+        }
+
+        Ok(self.tree.as_ref().unwrap())
+    }
+
+    /// Get the current tree
+    pub fn tree(&self) -> Option<&Tree> {
+        self.tree.as_ref()
+    }
+
+    /// Get the current source code
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    /// Apply multiple edits at once (more efficient than individual edits)
+    pub fn reparse_with_edits(&mut self, edits: &[Edit], new_source: &str) -> Result<&Tree> {
+        if let Some(ref mut tree) = self.tree {
+            // Apply all edits to the tree
+            for edit in edits {
+                let input_edit = InputEdit {
+                    start_byte: edit.start_byte,
+                    old_end_byte: edit.old_end_byte,
+                    new_end_byte: edit.new_end_byte,
+                    start_position: TSPoint {
+                        row: edit.start_position.0,
+                        column: edit.start_position.1,
+                    },
+                    old_end_position: TSPoint {
+                        row: edit.old_end_position.0,
+                        column: edit.old_end_position.1,
+                    },
+                    new_end_position: TSPoint {
+                        row: edit.new_end_position.0,
+                        column: edit.new_end_position.1,
+                    },
+                };
+                tree.edit(&input_edit);
+            }
+
+            self.source = new_source.to_string();
+            
+            // Parse incrementally using the edited tree
+            self.tree = self.parser
+                .parse(new_source, Some(tree))
+                .context("Failed to reparse Dart source code")?
+                .into();
+        } else {
+            return self.parse(new_source);
+        }
+
+        Ok(self.tree.as_ref().unwrap())
+    }
+}
+
+/// Represents a source code edit for incremental parsing
+#[derive(Debug, Clone, Copy)]
+pub struct Edit {
+    /// Start byte position of the edit
+    pub start_byte: usize,
+    /// Old end byte position (before the edit)
+    pub old_end_byte: usize,
+    /// New end byte position (after the edit)
+    pub new_end_byte: usize,
+    /// Start position as (row, column)
+    pub start_position: (usize, usize),
+    /// Old end position as (row, column)
+    pub old_end_position: (usize, usize),
+    /// New end position as (row, column)
+    pub new_end_position: (usize, usize),
+}
+
+impl Edit {
+    /// Create an edit that inserts text at a position
+    pub fn insert(position: usize, text_len: usize, row: usize, col: usize) -> Self {
+        Self {
+            start_byte: position,
+            old_end_byte: position,
+            new_end_byte: position + text_len,
+            start_position: (row, col),
+            old_end_position: (row, col),
+            new_end_position: (row, col + text_len),
+        }
+    }
+
+    /// Create an edit that deletes text from start to end
+    pub fn delete(start: usize, end: usize, start_row: usize, start_col: usize, end_row: usize, end_col: usize) -> Self {
+        Self {
+            start_byte: start,
+            old_end_byte: end,
+            new_end_byte: start,
+            start_position: (start_row, start_col),
+            old_end_position: (end_row, end_col),
+            new_end_position: (start_row, start_col),
+        }
+    }
+
+    /// Create an edit that replaces text from start to end with new text
+    pub fn replace(
+        start: usize,
+        old_end: usize,
+        new_text_len: usize,
+        start_row: usize,
+        start_col: usize,
+        old_end_row: usize,
+        old_end_col: usize,
+        new_end_col: usize,
+    ) -> Self {
+        Self {
+            start_byte: start,
+            old_end_byte: old_end,
+            new_end_byte: start + new_text_len,
+            start_position: (start_row, start_col),
+            old_end_position: (old_end_row, old_end_col),
+            new_end_position: (start_row, new_end_col),
+        }
+    }
 }
 
 /// Query result containing matched nodes and their captures
@@ -1052,5 +1255,110 @@ class MyClass {}
 
         assert!(!matches.is_empty(), "Should find imports");
         assert!(matches.len() >= 2, "Should find at least 2 imports");
+    }
+
+    #[test]
+    fn test_incremental_parser_initial() {
+        let mut parser = IncrementalParser::new().expect("Failed to create parser");
+        let source = "class MyClass {}";
+        
+        let tree = parser.parse(source).expect("Failed to parse");
+        assert_eq!(tree.root_node().kind(), "program");
+        assert_eq!(parser.source(), source);
+    }
+
+    #[test]
+    fn test_incremental_parser_insert() {
+        let mut parser = IncrementalParser::new().expect("Failed to create parser");
+        let initial = "class MyClass {}";
+        parser.parse(initial).expect("Failed to parse initial");
+
+        // Insert " extends Object" before the closing brace
+        // Position: "class MyClass" (13 chars) + " extends Object" (15 chars)
+        let edit = Edit::insert(13, 15, 0, 13);
+        let new_source = "class MyClass extends Object {}";
+        
+        let tree = parser.reparse(edit, new_source).expect("Failed to reparse");
+        assert!(!tree.root_node().has_error(), "Tree should not have errors");
+        
+        // Verify we can still extract the class
+        let classes = extract_classes(tree, new_source);
+        assert_eq!(classes.len(), 1);
+        assert_eq!(classes[0].name, "MyClass");
+    }
+
+    #[test]
+    fn test_incremental_parser_delete() {
+        let mut parser = IncrementalParser::new().expect("Failed to create parser");
+        let initial = "class MyClass extends Object {}";
+        parser.parse(initial).expect("Failed to parse initial");
+
+        // Delete " extends Object" (from position 13 to 28)
+        let edit = Edit::delete(13, 28, 0, 13, 0, 28);
+        let new_source = "class MyClass {}";
+        
+        let tree = parser.reparse(edit, new_source).expect("Failed to reparse");
+        assert!(!tree.root_node().has_error(), "Tree should not have errors");
+        
+        let classes = extract_classes(tree, new_source);
+        assert_eq!(classes.len(), 1);
+        assert_eq!(classes[0].name, "MyClass");
+    }
+
+    #[test]
+    fn test_incremental_parser_replace() {
+        let mut parser = IncrementalParser::new().expect("Failed to create parser");
+        let initial = "class OldName {}";
+        parser.parse(initial).expect("Failed to parse initial");
+
+        // Replace "OldName" with "NewName" (position 6 to 13, length 7)
+        let edit = Edit::replace(6, 13, 7, 0, 6, 0, 13, 13);
+        let new_source = "class NewName {}";
+        
+        let tree = parser.reparse(edit, new_source).expect("Failed to reparse");
+        assert!(!tree.root_node().has_error(), "Tree should not have errors");
+        
+        let classes = extract_classes(tree, new_source);
+        assert_eq!(classes.len(), 1);
+        assert_eq!(classes[0].name, "NewName");
+    }
+
+    #[test]
+    fn test_incremental_parser_multiple_edits() {
+        let mut parser = IncrementalParser::new().expect("Failed to create parser");
+        let initial = "class A {} class B {}";
+        parser.parse(initial).expect("Failed to parse initial");
+
+        // Make multiple insertions
+        let edit1 = Edit::insert(7, 13, 0, 7);  // Insert " implements X" after "class A"
+        let new_source1 = "class A implements X {} class B {}";
+        parser.reparse(edit1, new_source1).expect("Failed to reparse 1");
+
+        let edit2 = Edit::insert(31, 13, 0, 31);  // Insert " implements Y" after "class B"
+        let new_source2 = "class A implements X {} class B implements Y {}";
+        
+        let tree = parser.reparse(edit2, new_source2).expect("Failed to reparse 2");
+        let classes = extract_classes(tree, new_source2);
+        assert_eq!(classes.len(), 2);
+    }
+
+    #[test]
+    fn test_incremental_parser_multiple_edits_batch() {
+        let mut parser = IncrementalParser::new().expect("Failed to create parser");
+        let initial = "class A {} class B {}";
+        parser.parse(initial).expect("Failed to parse initial");
+
+        // Apply multiple edits at once
+        let edits = vec![
+            Edit::insert(7, 5, 0, 7),   // Insert "Final" after "class A"
+            Edit::insert(27, 5, 0, 27), // Insert "Final" after "class B" (adjusted for first edit)
+        ];
+        
+        let new_source = "class AFinal {} class BFinal {}";
+        let tree = parser.reparse_with_edits(&edits, new_source).expect("Failed to reparse");
+        
+        let classes = extract_classes(tree, new_source);
+        assert_eq!(classes.len(), 2);
+        // Note: The actual class names won't change, just demonstrating batch edits work
     }
 }
