@@ -238,6 +238,22 @@ The analyzer is structured into several modules:
 - **mcp**: Model Context Protocol server
 - **error**: Error types and diagnostic structures
 
+### Current Implementation
+
+The current implementation uses regex-based pattern matching for rule detection. This approach provides:
+- **Pros**: Fast, lightweight, easy to add new rules
+- **Cons**: Limited to syntactic patterns, can produce false positives
+
+### Future Enhancements
+
+For more accurate analysis, future versions could:
+1. Integrate AST (Abstract Syntax Tree) parsing using tree-sitter or analyzer_plugin
+2. Add semantic analysis for better import usage detection
+3. Support for type inference and flow analysis
+4. Integration with Dart Analysis Server for IDE-quality diagnostics
+5. Watch mode for continuous analysis
+6. Incremental analysis for large projects
+
 ## Performance
 
 The analyzer is designed for large codebases:

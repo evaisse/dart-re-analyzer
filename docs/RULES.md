@@ -2,6 +2,23 @@
 
 This document describes all available analyzer rules.
 
+## Implementation Note
+
+**Current Approach**: The analyzer uses regex-based pattern matching for rule detection. This provides fast analysis suitable for most use cases but has some limitations:
+
+- **False Positives**: Some rules may flag correct code (e.g., unused imports used only in type annotations)
+- **False Negatives**: Complex patterns may be missed (e.g., dynamic usage in complex expressions)
+- **Limited Context**: Cannot perform semantic analysis or type inference
+
+**Future Improvements**: Future versions may integrate AST parsing (tree-sitter or Dart analyzer) for more accurate detection.
+
+For production use, consider:
+1. Running alongside official Dart analyzer for comprehensive coverage
+2. Tuning configuration to disable rules that produce too many false positives for your codebase
+3. Using as a quick pre-commit check with full analysis in CI/CD
+
+---
+
 ## Style Rules
 
 Style rules focus on code conventions, naming patterns, and file organization.
