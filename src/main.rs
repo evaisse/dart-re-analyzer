@@ -9,9 +9,9 @@ use analyzer::Rule;
 use clap::{Parser, Subcommand};
 use config::AnalyzerConfig;
 use error::{Diagnostic, Result};
-use mcp::{McpServer, start_mcp_server};
+use mcp::{start_mcp_server, McpServer};
 use rayon::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[derive(Parser)]
@@ -140,7 +140,7 @@ fn load_config(config_path: Option<PathBuf>) -> Result<AnalyzerConfig> {
 }
 
 fn analyze_project(
-    path: &PathBuf,
+    path: &Path,
     config: &AnalyzerConfig,
     style_only: bool,
     runtime_only: bool,
@@ -174,10 +174,7 @@ fn analyze_project(
     Ok(diagnostics)
 }
 
-fn analyze_parallel(
-    files: &[parser::DartFile],
-    rules: &[Arc<dyn Rule>],
-) -> Vec<Diagnostic> {
+fn analyze_parallel(files: &[parser::DartFile], rules: &[Arc<dyn Rule>]) -> Vec<Diagnostic> {
     files
         .par_iter()
         .flat_map(|file| {
@@ -190,10 +187,7 @@ fn analyze_parallel(
         .collect()
 }
 
-fn analyze_sequential(
-    files: &[parser::DartFile],
-    rules: &[Arc<dyn Rule>],
-) -> Vec<Diagnostic> {
+fn analyze_sequential(files: &[parser::DartFile], rules: &[Arc<dyn Rule>]) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
 
     for file in files {

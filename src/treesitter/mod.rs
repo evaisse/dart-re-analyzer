@@ -137,11 +137,7 @@ pub fn extract_methods<'a>(tree: &'a Tree, source: &str) -> Vec<DartMethod<'a>> 
     methods
 }
 
-fn extract_methods_recursive<'a>(
-    node: Node<'a>,
-    source: &str,
-    methods: &mut Vec<DartMethod<'a>>,
-) {
+fn extract_methods_recursive<'a>(node: Node<'a>, source: &str, methods: &mut Vec<DartMethod<'a>>) {
     if node.kind() == "method_signature" || node.kind() == "function_signature" {
         // Find the method name
         if let Some(name_node) = node.child_by_field_name("name") {
@@ -171,11 +167,7 @@ pub fn extract_imports<'a>(tree: &'a Tree, source: &str) -> Vec<DartImport<'a>> 
     imports
 }
 
-fn extract_imports_recursive<'a>(
-    node: Node<'a>,
-    source: &str,
-    imports: &mut Vec<DartImport<'a>>,
-) {
+fn extract_imports_recursive<'a>(node: Node<'a>, source: &str, imports: &mut Vec<DartImport<'a>>) {
     if node.kind() == "import_or_export" || node.kind() == "import_specification" {
         // Try to find the URI string
         let mut cursor = node.walk();
@@ -265,7 +257,7 @@ class MyClass {
 
         // Should have multiple tokens including keywords, identifiers, etc.
         assert!(!tokens.is_empty());
-        
+
         // Find the 'class' keyword token
         let has_class = tokens.iter().any(|t| t.text == "class");
         assert!(has_class, "Should find 'class' keyword");
@@ -312,7 +304,7 @@ class MyClass {}
         let source = "class { incomplete";
         let tree = parse_dart(source).expect("Failed to parse");
         let root = tree.root_node();
-        
+
         // Tree-sitter should parse it but mark errors
         assert_eq!(root.kind(), "program");
         // Note: has_error() checks if there are error nodes in the tree

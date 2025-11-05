@@ -1,4 +1,4 @@
-use crate::error::{Diagnostic, Location, Result};
+use crate::error::{Diagnostic, Result};
 use std::path::Path;
 
 pub trait Rule: Send + Sync {

@@ -1,7 +1,7 @@
 // Example demonstrating Tree-sitter parsing capabilities for Dart
 
 use dart_re_analyzer::treesitter::{
-    parse_dart, extract_tokens, extract_classes, extract_imports, print_tree
+    extract_classes, extract_imports, extract_tokens, parse_dart,
 };
 
 fn main() {
@@ -97,8 +97,10 @@ class MyApp extends StatelessWidget {
     let classes = extract_classes(&tree, dart_code);
     println!("   Found {} classes:", classes.len());
     for class in &classes {
-        println!("     - {} at byte range [{}..{}]", 
-                 class.name, class.start_byte, class.end_byte);
+        println!(
+            "     - {} at byte range [{}..{}]",
+            class.name, class.start_byte, class.end_byte
+        );
     }
     println!();
 
@@ -115,24 +117,33 @@ class MyApp extends StatelessWidget {
     println!("4. Extracting all tokens...");
     let tokens = extract_tokens(&tree, dart_code);
     println!("   Total tokens: {}", tokens.len());
-    
+
     // Show some token statistics
-    let keywords: Vec<_> = tokens.iter()
-        .filter(|t| matches!(t.text.as_str(), "class" | "void" | "import" | "extends" | "return" | "final"))
+    let keywords: Vec<_> = tokens
+        .iter()
+        .filter(|t| {
+            matches!(
+                t.text.as_str(),
+                "class" | "void" | "import" | "extends" | "return" | "final"
+            )
+        })
         .collect();
     println!("   Keywords found: {}", keywords.len());
-    
-    let identifiers: Vec<_> = tokens.iter()
-        .filter(|t| t.kind == "identifier")
-        .collect();
+
+    let identifiers: Vec<_> = tokens.iter().filter(|t| t.kind == "identifier").collect();
     println!("   Identifiers: {}", identifiers.len());
     println!();
 
     // Show first 20 tokens
     println!("5. First 20 tokens:");
     for (i, token) in tokens.iter().take(20).enumerate() {
-        println!("   {:2}. {:15} {:?} at line {}", 
-                 i + 1, token.kind, token.text, token.start_point.row);
+        println!(
+            "   {:2}. {:15} {:?} at line {}",
+            i + 1,
+            token.kind,
+            token.text,
+            token.start_point.row
+        );
     }
     println!();
 

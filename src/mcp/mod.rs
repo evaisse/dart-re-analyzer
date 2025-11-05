@@ -31,6 +31,12 @@ pub struct McpServer {
     diagnostics: Arc<RwLock<Vec<Diagnostic>>>,
 }
 
+impl Default for McpServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl McpServer {
     pub fn new() -> Self {
         Self {
@@ -49,7 +55,7 @@ impl McpServer {
 
     pub async fn get_filtered_diagnostics(&self, query: &ErrorsQuery) -> Vec<Diagnostic> {
         let diagnostics = self.diagnostics.read().await;
-        
+
         diagnostics
             .iter()
             .filter(|d| {
@@ -58,19 +64,19 @@ impl McpServer {
                         return false;
                     }
                 }
-                
+
                 if let Some(ref sev) = query.severity {
                     if d.severity.to_string() != *sev {
                         return false;
                     }
                 }
-                
+
                 if let Some(ref file) = query.file {
                     if !d.location.file.contains(file) {
                         return false;
                     }
                 }
-                
+
                 true
             })
             .cloned()
@@ -87,23 +93,21 @@ impl McpServer {
                     error: None,
                 }
             }
-            "get_errors" => {
-                match serde_json::from_value::<ErrorsQuery>(request.params) {
-                    Ok(query) => {
-                        let diagnostics = self.get_filtered_diagnostics(&query).await;
-                        McpResponse {
-                            success: true,
-                            data: serde_json::to_value(diagnostics).unwrap(),
-                            error: None,
-                        }
+            "get_errors" => match serde_json::from_value::<ErrorsQuery>(request.params) {
+                Ok(query) => {
+                    let diagnostics = self.get_filtered_diagnostics(&query).await;
+                    McpResponse {
+                        success: true,
+                        data: serde_json::to_value(diagnostics).unwrap(),
+                        error: None,
                     }
-                    Err(e) => McpResponse {
-                        success: false,
-                        data: serde_json::Value::Null,
-                        error: Some(format!("Invalid query parameters: {}", e)),
-                    },
                 }
-            }
+                Err(e) => McpResponse {
+                    success: false,
+                    data: serde_json::Value::Null,
+                    error: Some(format!("Invalid query parameters: {}", e)),
+                },
+            },
             "get_stats" => {
                 let diagnostics = self.get_all_diagnostics().await;
                 let stats = DiagnosticsStats::from_diagnostics(&diagnostics);
@@ -176,10 +180,7 @@ impl DiagnosticsStats {
 }
 
 // Simple JSON-RPC server implementation
-pub async fn start_mcp_server(
-    port: u16,
-    mcp: Arc<McpServer>,
-) -> Result<()> {
+pub async fn start_mcp_server(port: u16, mcp: Arc<McpServer>) -> Result<()> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::net::TcpListener;
 
