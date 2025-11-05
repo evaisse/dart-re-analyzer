@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "exclude_patterns": [
+    ".dart_tool/**",
+    "build/**",
+    ".pub/**",
+    "packages/**",
+    "**/*.g.dart",
+    "**/*.freezed.dart"
+  ],
+  "style_rules": {
+    "enabled": true,
+    "disabled_rules": []
+  },
+  "runtime_rules": {
+    "enabled": true,
+    "disabled_rules": []
+  },
+  "max_line_length": 120,
+  "parallel": true
+}
