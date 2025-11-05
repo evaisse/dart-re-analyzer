@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "rust-analyzer": {
+      "command": "rust-analyzer",
+      "args": [],
+      "description": "Rust language server for analyzing and understanding Rust code in this project",
+      "env": {}
+    },
+    "dart-analyzer": {
+      "command": "dart",
+      "args": ["language-server", "--protocol=lsp"],
+      "description": "Dart language server for analyzing Dart code patterns and examples",
+      "env": {}
+    }
+  }
+}

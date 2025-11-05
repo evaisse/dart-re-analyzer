@@ -227,6 +227,21 @@ cargo test
 RUST_LOG=debug cargo run -- analyze .
 ```
 
+### GitHub Copilot Integration
+
+This project is configured to work with GitHub Copilot and includes MCP (Model Context Protocol) server configurations for enhanced AI assistance.
+
+**Configured Language Servers:**
+- **rust-analyzer**: Provides Rust language intelligence
+- **dart-analyzer**: Provides Dart language support for understanding patterns
+
+**Setup:**
+1. Open this project in VS Code
+2. Install recommended extensions (GitHub Copilot, rust-analyzer, etc.)
+3. The MCP servers will automatically enhance Copilot's understanding of the codebase
+
+See [`.github/copilot/README.md`](.github/copilot/README.md) for detailed configuration information.
+
 ## Architecture
 
 The analyzer is structured into several modules:

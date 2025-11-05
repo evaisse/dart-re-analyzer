@@ -1,0 +1,17 @@
+{
+  "recommendations": [
+    // Rust language support
+    "rust-lang.rust-analyzer",
+    
+    // GitHub Copilot
+    "github.copilot",
+    "github.copilot-chat",
+    
+    // Dart support (for analyzing Dart code patterns)
+    "dart-code.dart-code",
+    
+    // Additional helpful extensions
+    "vadimcn.vscode-lldb",
+    "tamasfe.even-better-toml"
+  ]
+}

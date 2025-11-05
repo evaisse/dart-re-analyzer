@@ -1,0 +1,42 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--lib",
+          "--package=dart-re-analyzer"
+        ],
+        "filter": {
+          "name": "dart-re-analyzer",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug executable 'dart-re-analyzer'",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=dart-re-analyzer",
+          "--package=dart-re-analyzer"
+        ],
+        "filter": {
+          "name": "dart-re-analyzer",
+          "kind": "bin"
+        }
+      },
+      "args": ["analyze", "."],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}
