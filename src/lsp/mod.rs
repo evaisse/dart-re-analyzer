@@ -27,7 +27,7 @@ pub struct LspProxy {
     dart_stdin: Option<ChildStdin>,
     dart_stdout: Option<BufReader<ChildStdout>>,
     dart_binary: Option<String>,
-    config: AnalyzerConfig,
+    config: AnalyzerConfig,  // TODO: Use config.exclude_patterns for file filtering
     rules: Vec<Arc<dyn Rule>>,
     workspace_root: PathBuf,
     diagnostics_cache: Arc<Mutex<HashMap<String, Vec<Diagnostic>>>>,
@@ -75,6 +75,9 @@ impl LspProxy {
     }
 
     /// Read an LSP message from a reader
+    /// 
+    /// Note: This uses blocking I/O with read_exact(). In production environments with
+    /// unreliable connections, consider adding timeout mechanisms or using async I/O.
     fn read_message<R: BufRead>(reader: &mut R) -> Result<Option<LspMessage>> {
         let mut content_length: Option<usize> = None;
         let mut line = String::new();
@@ -338,6 +341,9 @@ impl LspProxy {
 }
 
 impl Clone for LspProxy {
+    /// Creates a new LspProxy with the same configuration but no process handles.
+    /// The cloned instance will need start_dart_server() called before use.
+    /// This is primarily used for spawning background analysis tasks.
     fn clone(&self) -> Self {
         Self {
             dart_process: None,
