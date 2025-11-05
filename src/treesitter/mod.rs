@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use tree_sitter::{Node, Parser, Tree};
+use tree_sitter::{Node, Parser, Query, QueryCursor, Tree, StreamingIterator};
 
 /// Initialize a Tree-sitter parser configured for Dart
 pub fn create_dart_parser() -> Result<Parser> {
@@ -16,6 +16,145 @@ pub fn parse_dart(source: &str) -> Result<Tree> {
     parser
         .parse(source, None)
         .context("Failed to parse Dart source code")
+}
+
+/// Query result containing matched nodes and their captures
+#[derive(Debug)]
+pub struct QueryMatch<'a> {
+    pub pattern_index: usize,
+    pub captures: Vec<QueryCapture<'a>>,
+}
+
+#[derive(Debug)]
+pub struct QueryCapture<'a> {
+    pub name: String,
+    pub node: Node<'a>,
+    pub text: String,
+}
+
+/// Execute a tree-sitter query on the parsed tree
+/// 
+/// # Example Query Patterns
+/// 
+/// Find all class definitions:
+/// ```text
+/// (class_definition name: (identifier) @class.name)
+/// ```
+/// 
+/// Find all method calls:
+/// ```text
+/// (selector_expression 
+///   field: (argument_part) @method.call)
+/// ```
+/// 
+/// Find all dynamic type usage:
+/// ```text
+/// (type_identifier) @type (#eq? @type "dynamic")
+/// ```
+pub fn query_tree<'a>(tree: &'a Tree, source: &str, query_str: &str) -> Result<Vec<QueryMatch<'a>>> {
+    let language = tree_sitter_dart::language();
+    let query = Query::new(&language, query_str)
+        .context("Failed to parse tree-sitter query")?;
+    
+    let mut cursor = QueryCursor::new();
+    let mut matches_iter = cursor.matches(&query, tree.root_node(), source.as_bytes());
+    
+    let capture_names = query.capture_names();
+    let mut results = Vec::new();
+    
+    // Use StreamingIterator to iterate through matches
+    while let Some(m) = matches_iter.next() {
+        let mut captures = Vec::new();
+        for capture in m.captures {
+            let name = capture_names[capture.index as usize].to_string();
+            let text = capture.node
+                .utf8_text(source.as_bytes())
+                .unwrap_or("<error>")
+                .to_string();
+            
+            captures.push(QueryCapture {
+                name,
+                node: capture.node,
+                text,
+            });
+        }
+        
+        results.push(QueryMatch {
+            pattern_index: m.pattern_index,
+            captures,
+        });
+    }
+    
+    Ok(results)
+}
+
+/// Pre-defined query patterns for common Dart constructs
+pub mod queries {
+    /// Find all class definitions
+    pub const CLASSES: &str = r#"
+        (class_definition 
+          name: (identifier) @class.name) @class.def
+    "#;
+    
+    /// Find all method/function definitions
+    pub const METHODS: &str = r#"
+        [
+          (method_signature) @method.def
+          (function_signature) @function.def
+        ]
+    "#;
+    
+    /// Find all field declarations in classes
+    pub const FIELDS: &str = r#"
+        (class_member_definition
+          (declaration) @field.decl)
+    "#;
+    
+    /// Find all import statements
+    pub const IMPORTS: &str = r#"
+        (import_or_export) @import.stmt
+    "#;
+    
+    /// Find all dynamic type usage
+    pub const DYNAMIC_TYPES: &str = r#"
+        (type_identifier) @type.name
+        (#eq? @type.name "dynamic")
+    "#;
+    
+    /// Find all print statements
+    pub const PRINT_CALLS: &str = r#"
+        (selector_expression
+          (identifier) @function (#eq? @function "print")
+          (argument_part) @args)
+    "#;
+    
+    /// Find empty catch blocks
+    pub const EMPTY_CATCH: &str = r#"
+        (catch_clause
+          body: (block) @catch.body
+          (#match? @catch.body "^\\{\\s*\\}$"))
+    "#;
+    
+    /// Find null assertion operators
+    pub const NULL_ASSERTIONS: &str = r#"
+        (postfix_expression
+          (identifier)
+          "!" @null.assertion)
+    "#;
+    
+    /// Find all variable declarations with type annotations
+    pub const TYPED_VARIABLES: &str = r#"
+        (local_variable_declaration
+          (initialized_variable_definition
+            (type_identifier) @var.type
+            (identifier) @var.name))
+    "#;
+    
+    /// Find generic type parameters
+    pub const TYPE_PARAMETERS: &str = r#"
+        (type_parameter
+          (type_identifier) @param.name) @param.def
+    "#;
 }
 
 /// Represents a token extracted from the tree-sitter CST
@@ -820,5 +959,98 @@ void main() {
         });
         
         assert!(has_binary || has_literal, "Should detect various expression types");
+    }
+
+    #[test]
+    fn test_query_classes() {
+        let source = r#"
+class FirstClass {}
+class SecondClass {}
+        "#;
+
+        let tree = parse_dart(source).expect("Failed to parse");
+        let matches = query_tree(&tree, source, queries::CLASSES).expect("Query failed");
+
+        assert!(!matches.is_empty(), "Should find classes");
+        
+        // Check we found class names
+        let class_names: Vec<_> = matches.iter()
+            .flat_map(|m| &m.captures)
+            .filter(|c| c.name == "class.name")
+            .map(|c| c.text.as_str())
+            .collect();
+        
+        assert!(class_names.contains(&"FirstClass") || class_names.contains(&"SecondClass"));
+    }
+
+    #[test]
+    fn test_query_methods() {
+        let source = r#"
+void myFunction() {}
+
+class MyClass {
+    void myMethod() {}
+}
+        "#;
+
+        let tree = parse_dart(source).expect("Failed to parse");
+        let matches = query_tree(&tree, source, queries::METHODS).expect("Query failed");
+
+        assert!(!matches.is_empty(), "Should find methods/functions");
+    }
+
+    #[test]
+    fn test_custom_query() {
+        let source = r#"
+class TestClass {
+    int value = 42;
+}
+        "#;
+
+        let tree = parse_dart(source).expect("Failed to parse");
+        
+        // Custom query to find integer literals
+        let query_str = r#"(decimal_integer_literal) @number"#;
+        let matches = query_tree(&tree, source, query_str).expect("Query failed");
+
+        assert!(!matches.is_empty(), "Should find integer literals");
+        
+        let numbers: Vec<_> = matches.iter()
+            .flat_map(|m| &m.captures)
+            .filter(|c| c.name == "number")
+            .map(|c| c.text.as_str())
+            .collect();
+        
+        assert!(numbers.contains(&"42"), "Should find the number 42");
+    }
+
+    #[test]
+    fn test_query_type_parameters() {
+        let source = r#"
+class GenericClass<T, E> {
+    T value;
+}
+        "#;
+
+        let tree = parse_dart(source).expect("Failed to parse");
+        let matches = query_tree(&tree, source, queries::TYPE_PARAMETERS).expect("Query failed");
+
+        assert!(!matches.is_empty(), "Should find type parameters");
+    }
+
+    #[test]
+    fn test_query_imports() {
+        let source = r#"
+import 'dart:core';
+import 'package:flutter/material.dart';
+
+class MyClass {}
+        "#;
+
+        let tree = parse_dart(source).expect("Failed to parse");
+        let matches = query_tree(&tree, source, queries::IMPORTS).expect("Query failed");
+
+        assert!(!matches.is_empty(), "Should find imports");
+        assert!(matches.len() >= 2, "Should find at least 2 imports");
     }
 }
