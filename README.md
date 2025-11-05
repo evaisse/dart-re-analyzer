@@ -33,6 +33,13 @@ Built-in Model Context Protocol (MCP) server for programmatic access to analyzer
 - Get statistics about code issues
 - JSON-RPC interface for easy integration
 
+### 🔌 LSP Proxy
+Use dart-re-analyzer as a transparent proxy for the Dart Analysis Server:
+- Inject dart-re-analyzer diagnostics directly into your IDE
+- Works with VS Code, IntelliJ, Neovim, Emacs, and more
+- No IDE configuration changes needed
+- Combines dart-re-analyzer rules with Dart Analysis Server's semantic analysis
+
 ## Installation
 
 ### From Source
@@ -118,6 +125,14 @@ Start the MCP server for programmatic access:
 ```bash
 dart-re-analyzer serve --port 9000 /path/to/project
 ```
+
+### LSP Proxy
+Use as a Dart Analysis Server proxy in your IDE:
+```bash
+dart-re-analyzer language-server /path/to/project
+```
+
+This allows you to get dart-re-analyzer diagnostics directly in your IDE alongside the Dart Analysis Server's diagnostics. See [LSP Proxy Guide](docs/LSP_PROXY.md) for IDE-specific setup instructions.
 
 #### MCP API Examples
 
