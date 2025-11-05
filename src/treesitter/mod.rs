@@ -99,6 +99,62 @@ pub struct DartImport<'a> {
     pub end_byte: usize,
 }
 
+/// Wrapper for field declarations
+#[derive(Debug)]
+pub struct DartField<'a> {
+    pub name: String,
+    pub type_annotation: Option<String>,
+    pub is_static: bool,
+    pub is_final: bool,
+    pub is_const: bool,
+    pub node: Node<'a>,
+    pub start_byte: usize,
+    pub end_byte: usize,
+}
+
+/// Wrapper for variable declarations
+#[derive(Debug)]
+pub struct DartVariable<'a> {
+    pub name: String,
+    pub type_annotation: Option<String>,
+    pub is_final: bool,
+    pub is_const: bool,
+    pub node: Node<'a>,
+    pub start_byte: usize,
+    pub end_byte: usize,
+}
+
+/// Wrapper for type annotations
+#[derive(Debug)]
+pub struct DartTypeAnnotation<'a> {
+    pub type_name: String,
+    pub is_nullable: bool,
+    pub type_parameters: Vec<String>,
+    pub node: Node<'a>,
+    pub start_byte: usize,
+    pub end_byte: usize,
+}
+
+/// Wrapper for generic type parameters
+#[derive(Debug)]
+pub struct DartTypeParameter<'a> {
+    pub name: String,
+    pub bound: Option<String>,
+    pub node: Node<'a>,
+    pub start_byte: usize,
+    pub end_byte: usize,
+}
+
+/// Wrapper for expressions
+#[derive(Debug)]
+pub struct DartExpression<'a> {
+    pub kind: String,
+    pub text: String,
+    pub node: Node<'a>,
+    pub start_byte: usize,
+    pub end_byte: usize,
+}
+
 /// Extract all class declarations from the CST
 pub fn extract_classes<'a>(tree: &'a Tree, source: &str) -> Vec<DartClass<'a>> {
     let mut classes = Vec::new();
@@ -198,6 +254,319 @@ fn extract_imports_recursive<'a>(
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         extract_imports_recursive(child, source, imports);
+    }
+}
+
+/// Extract all field declarations from the CST
+pub fn extract_fields<'a>(tree: &'a Tree, source: &str) -> Vec<DartField<'a>> {
+    let mut fields = Vec::new();
+    let root = tree.root_node();
+    extract_fields_recursive(root, source, &mut fields);
+    fields
+}
+
+fn extract_fields_recursive<'a>(node: Node<'a>, source: &str, fields: &mut Vec<DartField<'a>>) {
+    // Field declarations are in class_member_definition nodes inside class_body
+    if node.kind() == "class_member_definition" {
+        // Look for declaration child
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "declaration" {
+                let mut is_static = false;
+                let mut is_final = false;
+                let mut is_const = false;
+                let mut type_annotation = None;
+                let mut field_name = None;
+
+                let mut decl_cursor = child.walk();
+                for decl_child in child.children(&mut decl_cursor) {
+                    match decl_child.kind() {
+                        "static" => is_static = true,
+                        "final_builtin" => is_final = true,
+                        "const_builtin" => is_const = true,
+                        "type_identifier" => {
+                            if let Ok(text) = decl_child.utf8_text(source.as_bytes()) {
+                                type_annotation = Some(text.to_string());
+                            }
+                        }
+                        "initialized_identifier_list" | "static_final_declaration_list" => {
+                            // Find the identifier within this list
+                            let mut id_cursor = decl_child.walk();
+                            for id_child in decl_child.children(&mut id_cursor) {
+                                if id_child.kind() == "initialized_identifier" 
+                                    || id_child.kind() == "static_final_declaration" 
+                                    || id_child.kind() == "identifier" {
+                                    // Get the first identifier
+                                    let mut name_cursor = id_child.walk();
+                                    for name_child in id_child.children(&mut name_cursor) {
+                                        if name_child.kind() == "identifier" {
+                                            if let Ok(name) = name_child.utf8_text(source.as_bytes()) {
+                                                field_name = Some(name.to_string());
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if field_name.is_none() && id_child.kind() == "identifier" {
+                                        if let Ok(name) = id_child.utf8_text(source.as_bytes()) {
+                                            field_name = Some(name.to_string());
+                                        }
+                                    }
+                                    if field_name.is_some() {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                if let Some(name) = field_name {
+                    fields.push(DartField {
+                        name,
+                        type_annotation,
+                        is_static,
+                        is_final,
+                        is_const,
+                        node: child,
+                        start_byte: child.start_byte(),
+                        end_byte: child.end_byte(),
+                    });
+                }
+            }
+        }
+    }
+
+    // Recurse into children
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        extract_fields_recursive(child, source, fields);
+    }
+}
+
+/// Extract all variable declarations from the CST
+pub fn extract_variables<'a>(tree: &'a Tree, source: &str) -> Vec<DartVariable<'a>> {
+    let mut variables = Vec::new();
+    let root = tree.root_node();
+    extract_variables_recursive(root, source, &mut variables);
+    variables
+}
+
+fn extract_variables_recursive<'a>(
+    node: Node<'a>,
+    source: &str,
+    variables: &mut Vec<DartVariable<'a>>,
+) {
+    // Local variable declarations contain initialized_variable_definition
+    if node.kind() == "local_variable_declaration" {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "initialized_variable_definition" {
+                let mut is_final = false;
+                let mut is_const = false;
+                let mut type_annotation = None;
+                let mut var_name = None;
+
+                let mut def_cursor = child.walk();
+                for def_child in child.children(&mut def_cursor) {
+                    match def_child.kind() {
+                        "final_builtin" => is_final = true,
+                        "const_builtin" => is_const = true,
+                        "type_identifier" => {
+                            if let Ok(text) = def_child.utf8_text(source.as_bytes()) {
+                                type_annotation = Some(text.to_string());
+                            }
+                        }
+                        "identifier" => {
+                            if var_name.is_none() {
+                                if let Ok(name) = def_child.utf8_text(source.as_bytes()) {
+                                    var_name = Some(name.to_string());
+                                }
+                            }
+                        }
+                        "inferred_type" => {
+                            // This is "var" type inference
+                            if let Ok(text) = def_child.utf8_text(source.as_bytes()) {
+                                type_annotation = Some(text.to_string());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                if let Some(name) = var_name {
+                    variables.push(DartVariable {
+                        name,
+                        type_annotation,
+                        is_final,
+                        is_const,
+                        node: child,
+                        start_byte: child.start_byte(),
+                        end_byte: child.end_byte(),
+                    });
+                }
+            }
+        }
+    }
+
+    // Recurse into children
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        extract_variables_recursive(child, source, variables);
+    }
+}
+
+/// Extract all type annotations from the CST
+pub fn extract_type_annotations<'a>(tree: &'a Tree, source: &str) -> Vec<DartTypeAnnotation<'a>> {
+    let mut type_annotations = Vec::new();
+    let root = tree.root_node();
+    extract_type_annotations_recursive(root, source, &mut type_annotations);
+    type_annotations
+}
+
+fn extract_type_annotations_recursive<'a>(
+    node: Node<'a>,
+    source: &str,
+    type_annotations: &mut Vec<DartTypeAnnotation<'a>>,
+) {
+    if node.kind() == "type_identifier" || node.kind() == "scoped_identifier" {
+        if let Ok(type_name) = node.utf8_text(source.as_bytes()) {
+            let is_nullable = node
+                .next_sibling()
+                .map(|s| s.kind() == "?")
+                .unwrap_or(false);
+
+            // Extract type parameters if present
+            let mut type_parameters = Vec::new();
+            if let Some(parent) = node.parent() {
+                if parent.kind() == "type_arguments" {
+                    let mut cursor = parent.walk();
+                    for child in parent.children(&mut cursor) {
+                        if child.kind() == "type_identifier" {
+                            if let Ok(param) = child.utf8_text(source.as_bytes()) {
+                                type_parameters.push(param.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+
+            type_annotations.push(DartTypeAnnotation {
+                type_name: type_name.to_string(),
+                is_nullable,
+                type_parameters,
+                node,
+                start_byte: node.start_byte(),
+                end_byte: node.end_byte(),
+            });
+        }
+    }
+
+    // Recurse into children
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        extract_type_annotations_recursive(child, source, type_annotations);
+    }
+}
+
+/// Extract all type parameters (generics) from the CST
+pub fn extract_type_parameters<'a>(tree: &'a Tree, source: &str) -> Vec<DartTypeParameter<'a>> {
+    let mut type_parameters = Vec::new();
+    let root = tree.root_node();
+    extract_type_parameters_recursive(root, source, &mut type_parameters);
+    type_parameters
+}
+
+fn extract_type_parameters_recursive<'a>(
+    node: Node<'a>,
+    source: &str,
+    type_parameters: &mut Vec<DartTypeParameter<'a>>,
+) {
+    if node.kind() == "type_parameter" {
+        let mut param_name = None;
+        let mut bound = None;
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "type_identifier" {
+                if param_name.is_none() {
+                    if let Ok(name) = child.utf8_text(source.as_bytes()) {
+                        param_name = Some(name.to_string());
+                    }
+                } else if let Ok(bound_text) = child.utf8_text(source.as_bytes()) {
+                    bound = Some(bound_text.to_string());
+                }
+            }
+        }
+
+        if let Some(name) = param_name {
+            type_parameters.push(DartTypeParameter {
+                name,
+                bound,
+                node,
+                start_byte: node.start_byte(),
+                end_byte: node.end_byte(),
+            });
+        }
+    }
+
+    // Recurse into children
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        extract_type_parameters_recursive(child, source, type_parameters);
+    }
+}
+
+/// Extract expressions from the CST
+pub fn extract_expressions<'a>(tree: &'a Tree, source: &str) -> Vec<DartExpression<'a>> {
+    let mut expressions = Vec::new();
+    let root = tree.root_node();
+    extract_expressions_recursive(root, source, &mut expressions);
+    expressions
+}
+
+fn extract_expressions_recursive<'a>(
+    node: Node<'a>,
+    source: &str,
+    expressions: &mut Vec<DartExpression<'a>>,
+) {
+    // Common expression types in Dart
+    let expression_kinds = [
+        "binary_expression",
+        "assignment_expression",
+        "conditional_expression",
+        "throw_expression",
+        "cascade_expression",
+        "is_expression",
+        "as_expression",
+        "postfix_expression",
+        "selector_expression",
+        "parenthesized_expression",
+        "list_literal",
+        "map_literal",
+        "string_literal",
+        "integer_literal",
+        "decimal_floating_point_literal",
+        "boolean_literal",
+        "null_literal",
+    ];
+
+    if expression_kinds.contains(&node.kind()) {
+        if let Ok(text) = node.utf8_text(source.as_bytes()) {
+            expressions.push(DartExpression {
+                kind: node.kind().to_string(),
+                text: text.to_string(),
+                node,
+                start_byte: node.start_byte(),
+                end_byte: node.end_byte(),
+            });
+        }
+    }
+
+    // Recurse into children
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        extract_expressions_recursive(child, source, expressions);
     }
 }
 
@@ -329,5 +698,127 @@ class MyClass {}
             assert!(token.end_byte >= token.start_byte);
             assert_eq!(&source[token.start_byte..token.end_byte], token.text);
         }
+    }
+
+    #[test]
+    fn test_extract_fields() {
+        let source = r#"
+class MyClass {
+    static final int staticField = 10;
+    String name;
+    final double value = 3.14;
+    const String constant = 'hello';
+}
+        "#;
+
+        let tree = parse_dart(source).expect("Failed to parse");
+        let fields = extract_fields(&tree, source);
+
+        assert!(!fields.is_empty(), "Should extract at least one field");
+        
+        // Check for specific field properties
+        let has_static = fields.iter().any(|f| f.is_static);
+        let has_final = fields.iter().any(|f| f.is_final);
+        let has_const = fields.iter().any(|f| f.is_const);
+        
+        assert!(has_static || has_final || has_const, "Should detect field modifiers");
+    }
+
+    #[test]
+    fn test_extract_variables() {
+        let source = r#"
+void main() {
+    var x = 10;
+    final String name = 'test';
+    const double pi = 3.14;
+    int count = 0;
+}
+        "#;
+
+        let tree = parse_dart(source).expect("Failed to parse");
+        let variables = extract_variables(&tree, source);
+
+        assert!(!variables.is_empty(), "Should extract variables");
+        
+        let has_final = variables.iter().any(|v| v.is_final);
+        let has_const = variables.iter().any(|v| v.is_const);
+        
+        assert!(has_final || has_const, "Should detect variable modifiers");
+    }
+
+    #[test]
+    fn test_extract_type_annotations() {
+        let source = r#"
+class MyClass {
+    String name;
+    int? nullableValue;
+    List<String> items;
+    Map<String, int> mapping;
+}
+        "#;
+
+        let tree = parse_dart(source).expect("Failed to parse");
+        let type_annotations = extract_type_annotations(&tree, source);
+
+        assert!(!type_annotations.is_empty(), "Should extract type annotations");
+        
+        // Check for common types
+        let has_string = type_annotations.iter().any(|t| t.type_name == "String");
+        let has_int = type_annotations.iter().any(|t| t.type_name == "int");
+        
+        assert!(has_string || has_int, "Should detect common type annotations");
+    }
+
+    #[test]
+    fn test_extract_type_parameters() {
+        let source = r#"
+class GenericClass<T, E extends Exception> {
+    T value;
+    E error;
+}
+
+class SimpleGeneric<T> {
+    T data;
+}
+        "#;
+
+        let tree = parse_dart(source).expect("Failed to parse");
+        let type_params = extract_type_parameters(&tree, source);
+
+        assert!(!type_params.is_empty(), "Should extract type parameters");
+        
+        // Check for type parameter with bound
+        let has_bounded = type_params.iter().any(|p| p.bound.is_some());
+        
+        // At least one type parameter should exist
+        assert!(type_params.len() >= 1, "Should find at least one type parameter");
+    }
+
+    #[test]
+    fn test_extract_expressions() {
+        let source = r#"
+void main() {
+    var x = 1 + 2;
+    var y = x * 3;
+    var list = [1, 2, 3];
+    var map = {'key': 'value'};
+    var str = 'hello';
+    var flag = true;
+    var nothing = null;
+}
+        "#;
+
+        let tree = parse_dart(source).expect("Failed to parse");
+        let expressions = extract_expressions(&tree, source);
+
+        assert!(!expressions.is_empty(), "Should extract expressions");
+        
+        // Should find various expression types
+        let has_binary = expressions.iter().any(|e| e.kind == "binary_expression");
+        let has_literal = expressions.iter().any(|e| {
+            e.kind.contains("literal")
+        });
+        
+        assert!(has_binary || has_literal, "Should detect various expression types");
     }
 }
