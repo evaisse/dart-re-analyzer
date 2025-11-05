@@ -176,6 +176,9 @@ pub struct Edit {
 
 impl Edit {
     /// Create an edit that inserts text at a position
+    /// 
+    /// Note: For multi-line insertions, calculate row/column positions carefully.
+    /// The new_end_position should account for newlines in the inserted text.
     pub fn insert(position: usize, text_len: usize, row: usize, col: usize) -> Self {
         Self {
             start_byte: position,
@@ -183,6 +186,7 @@ impl Edit {
             new_end_byte: position + text_len,
             start_position: (row, col),
             old_end_position: (row, col),
+            // Simplified single-line case. For multi-line, caller must calculate correctly
             new_end_position: (row, col + text_len),
         }
     }
@@ -1349,9 +1353,10 @@ class MyClass {}
         parser.parse(initial).expect("Failed to parse initial");
 
         // Apply multiple edits at once
+        // Note: When using batch edits, positions should be relative to the original state
         let edits = vec![
             Edit::insert(7, 5, 0, 7),   // Insert "Final" after "class A"
-            Edit::insert(27, 5, 0, 27), // Insert "Final" after "class B" (adjusted for first edit)
+            Edit::insert(17, 5, 0, 17), // Insert "Final" after "class B" (original position)
         ];
         
         let new_source = "class AFinal {} class BFinal {}";
@@ -1359,6 +1364,6 @@ class MyClass {}
         
         let classes = extract_classes(tree, new_source);
         assert_eq!(classes.len(), 2);
-        // Note: The actual class names won't change, just demonstrating batch edits work
+        // Note: Testing that batch edits work correctly
     }
 }

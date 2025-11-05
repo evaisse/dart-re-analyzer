@@ -28,9 +28,29 @@ pub struct DartAnalysisServerConfig {
 
 impl Default for DartAnalysisServerConfig {
     fn default() -> Self {
+        // Platform-specific defaults
+        // Note: In production, these should be discovered or required as config
+        let (sdk_path, snapshot_path) = if cfg!(target_os = "windows") {
+            (
+                PathBuf::from("C:\\tools\\dart-sdk"),
+                PathBuf::from("C:\\tools\\dart-sdk\\bin\\snapshots\\analysis_server.dart.snapshot"),
+            )
+        } else if cfg!(target_os = "macos") {
+            (
+                PathBuf::from("/usr/local/opt/dart"),
+                PathBuf::from("/usr/local/opt/dart/libexec/bin/snapshots/analysis_server.dart.snapshot"),
+            )
+        } else {
+            // Linux/Unix default
+            (
+                PathBuf::from("/usr/lib/dart"),
+                PathBuf::from("/usr/lib/dart/bin/snapshots/analysis_server.dart.snapshot"),
+            )
+        };
+
         Self {
-            dart_sdk_path: PathBuf::from("/usr/lib/dart"),
-            analysis_server_snapshot: PathBuf::from("/usr/lib/dart/bin/snapshots/analysis_server.dart.snapshot"),
+            dart_sdk_path: sdk_path,
+            analysis_server_snapshot: snapshot_path,
             vm_args: vec![],
             verbose: false,
         }
