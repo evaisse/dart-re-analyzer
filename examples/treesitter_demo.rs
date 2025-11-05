@@ -1,8 +1,6 @@
 // Example demonstrating Tree-sitter parsing capabilities for Dart
 
-use dart_re_analyzer::treesitter::{
-    extract_classes, extract_imports, extract_tokens, parse_dart,
-};
+use dart_re_analyzer::treesitter::{extract_classes, extract_imports, extract_tokens, parse_dart};
 
 fn main() {
     let dart_code = r#"
