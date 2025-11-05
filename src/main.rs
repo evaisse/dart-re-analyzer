@@ -1,6 +1,7 @@
 mod analyzer;
 mod config;
 mod error;
+mod lsp;
 mod mcp;
 mod parser;
 mod rules;
@@ -9,6 +10,7 @@ use analyzer::Rule;
 use clap::{Parser, Subcommand};
 use config::AnalyzerConfig;
 use error::{Diagnostic, Result};
+use lsp::LspProxy;
 use mcp::{McpServer, start_mcp_server};
 use rayon::prelude::*;
 use std::path::PathBuf;
@@ -66,6 +68,20 @@ enum Commands {
         #[arg(default_value = "analyzer_config.json")]
         output: PathBuf,
     },
+    /// Start LSP proxy (forwards to Dart Analysis Server with additional diagnostics)
+    LanguageServer {
+        /// Path to the Dart/Flutter project
+        #[arg(default_value = ".")]
+        path: PathBuf,
+
+        /// Path to dart binary (defaults to 'dart' in PATH)
+        #[arg(long)]
+        dart_binary: Option<String>,
+
+        /// Configuration file path
+        #[arg(long)]
+        config: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -117,6 +133,17 @@ async fn main() -> Result<()> {
             let config = AnalyzerConfig::default();
             config.save_to_file(&output)?;
             println!("Configuration file created at: {}", output.display());
+        }
+        Commands::LanguageServer {
+            path,
+            dart_binary,
+            config,
+        } => {
+            let config = load_config(config)?;
+            let mut proxy = LspProxy::new(dart_binary, config, path);
+            
+            eprintln!("Starting LSP proxy...");
+            proxy.run().await?;
         }
     }
 
