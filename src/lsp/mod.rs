@@ -26,6 +26,7 @@ pub struct LspProxy {
     dart_process: Option<Child>,
     dart_stdin: Option<ChildStdin>,
     dart_stdout: Option<BufReader<ChildStdout>>,
+    dart_binary: Option<String>,
     config: AnalyzerConfig,
     rules: Vec<Arc<dyn Rule>>,
     workspace_root: PathBuf,
@@ -34,13 +35,14 @@ pub struct LspProxy {
 
 impl LspProxy {
     /// Create a new LSP proxy
-    pub fn new(_dart_binary: Option<String>, config: AnalyzerConfig, workspace_root: PathBuf) -> Self {
+    pub fn new(dart_binary: Option<String>, config: AnalyzerConfig, workspace_root: PathBuf) -> Self {
         let rules = rules::get_all_rules();
         
         Self {
             dart_process: None,
             dart_stdin: None,
             dart_stdout: None,
+            dart_binary,
             config,
             rules,
             workspace_root,
@@ -49,8 +51,8 @@ impl LspProxy {
     }
 
     /// Start the Dart Analysis Server process
-    pub fn start_dart_server(&mut self, dart_binary: Option<String>) -> Result<()> {
-        let dart_cmd = dart_binary.unwrap_or_else(|| "dart".to_string());
+    pub fn start_dart_server(&mut self) -> Result<()> {
+        let dart_cmd = self.dart_binary.clone().unwrap_or_else(|| "dart".to_string());
         
         let mut child = Command::new(&dart_cmd)
             .arg("language-server")
@@ -145,7 +147,7 @@ impl LspProxy {
     /// Run the LSP proxy loop
     pub async fn run(&mut self) -> Result<()> {
         // Start dart server
-        self.start_dart_server(None)?;
+        self.start_dart_server()?;
 
         // Take ownership of the streams
         let mut dart_stdin = self.dart_stdin.take().context("Dart stdin not available")?;
@@ -177,7 +179,7 @@ impl LspProxy {
 
         // Spawn thread to read from Dart server
         let server_tx_clone = server_tx.clone();
-        let mut dart_stdout_reader = BufReader::new(dart_stdout);
+        let mut dart_stdout_reader = dart_stdout;
         std::thread::spawn(move || {
             loop {
                 match LspProxy::read_message(&mut dart_stdout_reader) {
@@ -341,6 +343,7 @@ impl Clone for LspProxy {
             dart_process: None,
             dart_stdin: None,
             dart_stdout: None,
+            dart_binary: self.dart_binary.clone(),
             config: self.config.clone(),
             rules: self.rules.clone(),
             workspace_root: self.workspace_root.clone(),
