@@ -4,3 +4,4 @@ pub mod error;
 pub mod mcp;
 pub mod parser;
 pub mod rules;
+pub mod treesitter;

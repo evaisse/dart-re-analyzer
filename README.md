@@ -159,6 +159,42 @@ Response format:
 }
 ```
 
+## Tree-sitter AST Analysis
+
+The analyzer now includes full Tree-sitter integration for precise syntax tree analysis:
+
+```rust
+use dart_re_analyzer::treesitter::{parse_dart, extract_classes, extract_tokens};
+
+// Parse Dart code into a full syntax tree
+let tree = parse_dart(source)?;
+
+// Extract all classes with precise locations
+let classes = extract_classes(&tree, source);
+for class in classes {
+    println!("Class: {} at bytes [{}..{}]", 
+             class.name, class.start_byte, class.end_byte);
+}
+
+// Extract all tokens for detailed analysis
+let tokens = extract_tokens(&tree, source);
+println!("Total tokens: {}", tokens.len());
+```
+
+**Features:**
+- Complete tokenization with line/column positions
+- Error-tolerant parsing (works with incomplete code)
+- Zero-copy parsing for performance
+- Typed wrappers for classes, methods, imports
+- Full concrete syntax tree access
+
+**See the [Tree-sitter Guide](docs/TREESITTER.md) for comprehensive documentation.**
+
+**Run the demo:**
+```bash
+cargo run --example treesitter_demo
+```
+
 ## Example Output
 
 ```
@@ -255,19 +291,33 @@ The analyzer is structured into several modules:
 
 ### Current Implementation
 
-The current implementation uses regex-based pattern matching for rule detection. This approach provides:
-- **Pros**: Fast, lightweight, easy to add new rules
-- **Cons**: Limited to syntactic patterns, can produce false positives
+The analyzer now includes two complementary parsing approaches:
+
+#### 1. Tree-sitter-based AST Analysis (NEW!)
+- **Full concrete syntax tree** with complete tokenization
+- **Error-tolerant parsing** that works with incomplete code
+- **High accuracy** for structural analysis (classes, methods, imports)
+- **Typed wrappers** for common Dart constructs
+- **See [Tree-sitter Guide](docs/TREESITTER.md)** for detailed usage
+
+#### 2. Regex-based Pattern Matching
+- **Fast and lightweight** for simple pattern detection
+- **Easy to add new rules** without complex parsing
+- **Good for straightforward checks** like naming conventions
+- **Lower memory overhead** compared to full parsing
+
+**Best of both**: Use Tree-sitter for structural/complex analysis, regex for fast simple checks.
 
 ### Future Enhancements
 
-For more accurate analysis, future versions could:
-1. Integrate AST (Abstract Syntax Tree) parsing using tree-sitter or analyzer_plugin
-2. Add semantic analysis for better import usage detection
+Potential improvements for future versions:
+1. ✅ ~~Integrate AST (Abstract Syntax Tree) parsing using tree-sitter~~ **DONE!**
+2. Add semantic analysis via Dart Analysis Server (LSP)
 3. Support for type inference and flow analysis
 4. Integration with Dart Analysis Server for IDE-quality diagnostics
 5. Watch mode for continuous analysis
 6. Incremental analysis for large projects
+
 
 ## Performance
 
