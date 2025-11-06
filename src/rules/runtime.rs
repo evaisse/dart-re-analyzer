@@ -12,9 +12,7 @@ fn dynamic_regex() -> &'static Regex {
 
 fn catch_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
-    REGEX.get_or_init(|| {
-        Regex::new(r"catch\s*\([^)]*\)\s*\{\s*\}").expect("Invalid regex pattern")
-    })
+    REGEX.get_or_init(|| Regex::new(r"catch\s*\([^)]*\)\s*\{\s*\}").expect("Invalid regex pattern"))
 }
 
 fn import_regex() -> &'static Regex {
@@ -32,9 +30,8 @@ fn print_regex() -> &'static Regex {
 
 fn null_check_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
-    REGEX.get_or_init(|| {
-        Regex::new(r"([a-zA-Z_][a-zA-Z0-9_]*)\!\.").expect("Invalid regex pattern")
-    })
+    REGEX
+        .get_or_init(|| Regex::new(r"([a-zA-Z_][a-zA-Z0-9_]*)\!\.").expect("Invalid regex pattern"))
 }
 
 // Rule: Avoid using dynamic type
@@ -126,28 +123,28 @@ impl Rule for UnusedImportRule {
 
     fn check(&self, file_path: &Path, content: &str) -> Result<Vec<Diagnostic>> {
         let mut diagnostics = Vec::new();
-        
+
         let mut imports = Vec::new();
-        
+
         // Collect all imports
         for (line_num, line) in content.lines().enumerate() {
             if let Some(caps) = import_regex().captures(line) {
                 let import_path = caps.get(1).unwrap().as_str();
                 let alias = caps.get(2).map(|m| m.as_str());
-                
+
                 // Extract the imported symbols to check
                 let symbol_to_check = if let Some(alias) = alias {
                     alias.to_string()
-                } else if let Some(last_part) = import_path.split('/').last() {
+                } else if let Some(last_part) = import_path.split('/').next_back() {
                     last_part.trim_end_matches(".dart").to_string()
                 } else {
                     continue;
                 };
-                
+
                 imports.push((line_num, symbol_to_check, line.to_string()));
             }
         }
-        
+
         // Check if each import is used in the file
         // Note: This is a simple heuristic that checks for literal string matches
         // It may produce false positives for:
@@ -156,19 +153,19 @@ impl Rule for UnusedImportRule {
         // - Transitive dependencies
         for (line_num, symbol, import_line) in imports {
             let mut is_used = false;
-            
+
             // Check if symbol appears elsewhere in the file
             for (check_line_num, line) in content.lines().enumerate() {
                 if check_line_num == line_num {
                     continue; // Skip the import line itself
                 }
-                
+
                 if line.contains(&symbol) {
                     is_used = true;
                     break;
                 }
             }
-            
+
             if !is_used {
                 diagnostics.push(
                     Diagnostic::new(

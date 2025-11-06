@@ -6,15 +6,19 @@ use thiserror::Error;
 pub enum AnalyzerError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
+    #[allow(dead_code)]
     #[error("Parse error: {0}")]
     Parse(String),
-    
+
     #[error("Configuration error: {0}")]
     Config(String),
-    
+
     #[error("MCP server error: {0}")]
     McpServer(String),
+
+    #[error("LSP proxy error: {0}")]
+    LspProxy(#[from] anyhow::Error),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

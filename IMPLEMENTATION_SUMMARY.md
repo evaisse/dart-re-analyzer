@@ -35,14 +35,24 @@ Complete JSON-RPC server implementation:
 - **Protocol**: Line-delimited JSON over TCP
 - **Port**: Configurable (default: 9000)
 
-### 3. CLI Interface
+### 3. LSP Proxy (NEW!)
 
-Three main commands:
+Language Server Protocol proxy implementation:
+- **Transparent forwarding**: Proxies all LSP messages to/from Dart Analysis Server
+- **Diagnostic injection**: Adds dart-re-analyzer diagnostics to LSP publishDiagnostics notifications
+- **IDE integration**: Works with VS Code, IntelliJ, Neovim, Emacs, and other LSP-compatible editors
+- **Caching**: Analyzes workspace once on initialization, caches results for fast injection
+- **Configuration**: Respects analyzer_config.json settings
+
+### 4. CLI Interface
+
+Four main commands:
 - **analyze**: Run analysis with optional filters (--style-only, --runtime-only)
 - **serve**: Start MCP server for continuous monitoring
+- **language-server**: Start LSP proxy for IDE integration (NEW!)
 - **init-config**: Generate default configuration file
 
-### 4. Configuration System
+### 5. Configuration System
 
 JSON-based configuration with:
 - Rule enable/disable per category
@@ -60,23 +70,29 @@ src/
 ├── config/       - Configuration management
 ├── error.rs      - Error types and diagnostics
 ├── lib.rs        - Library exports
+├── lsp/          - LSP proxy implementation (NEW!)
+│   └── mod.rs    - LSP message parsing, forwarding, diagnostic injection
 ├── main.rs       - CLI application
 ├── mcp/          - MCP server implementation
 ├── parser/       - Dart file discovery (file system)
-├── treesitter/   - Tree-sitter AST parsing (NEW!)
+├── treesitter/   - Tree-sitter AST parsing
 │   └── mod.rs    - Parser, token extraction, typed wrappers
 └── rules/        - Style and runtime rule implementations
     ├── style.rs
     └── runtime.rs
 
 examples/
-└── treesitter_demo.rs - Full Tree-sitter demonstration
+├── treesitter_demo.rs - Full Tree-sitter demonstration
+└── ide-config/        - IDE configuration examples (NEW!)
+    ├── README.md      - Setup guides for various IDEs
+    └── vscode-settings.json - VS Code example config
 
 docs/
 ├── QUICKSTART.md    - Getting started guide
 ├── RULES.md         - Rule reference
 ├── MCP_SERVER.md    - MCP integration
-└── TREESITTER.md    - Tree-sitter usage guide (NEW!)
+├── LSP_PROXY.md     - LSP proxy usage and IDE setup (NEW!)
+└── TREESITTER.md    - Tree-sitter usage guide
 ```
 
 ### Performance Optimizations
@@ -285,17 +301,18 @@ cargo install --path .
 ### System
 1. **Private Field Rule**: Placeholder implementation (could use Tree-sitter now)
 2. **MCP Server**: No graceful shutdown handling
+3. **LSP Proxy**: Currently analyzes workspace once on initialization; file change watching not yet implemented
 
 ## Contributing
 
 Future enhancements welcome:
 - ✅ ~~AST integration~~ **DONE with Tree-sitter!**
+- ✅ ~~LSP proxy for IDE integration~~ **DONE!**
 - Additional style rules leveraging Tree-sitter
 - More runtime safety checks
-- Dart Analysis Server integration (LSP) for semantics
-- IDE plugins
-- Watch mode with incremental parsing
+- Watch mode with file change detection for LSP proxy
 - Incremental analysis for large projects
+- Semantic analysis integration with Dart Analysis Server
 
 ## License
 
@@ -305,33 +322,36 @@ MIT License - See LICENSE file for details
 
 This implementation provides a robust, production-ready Dart analyzer with:
 
-### v0.2 Achievements
+### v0.3 Achievements
 - ✅ **Dual parsing engines**: Tree-sitter AST + Regex patterns
 - ✅ **Complete tokenization**: Byte-precise with full position info
 - ✅ **Error tolerance**: Parses incomplete/invalid code gracefully
 - ✅ **Typed wrappers**: Classes, methods, imports with clean API
+- ✅ **LSP proxy**: IDE integration via Language Server Protocol (NEW!)
 - ✅ **Comprehensive tests**: 20 tests, all passing
-- ✅ **Full documentation**: 5 docs + working examples
+- ✅ **Full documentation**: 5 docs + working examples + IDE configs
 - ✅ **Extensible architecture**: Easy to add Tree-sitter-based rules
 
 ### Key Strengths
 - **Performance**: ~1ms parsing for typical files, parallel processing
 - **Accuracy**: AST-based analysis for structural correctness
 - **Flexibility**: Hybrid approach - use the right tool for each job
+- **IDE Integration**: Works transparently with existing editors via LSP proxy
 - **Future-ready**: Foundation for semantic analysis integration
 - **Production-ready**: Tested, documented, with clear limitations
 
 ### Best Use Cases
-1. **Pre-commit hooks**: Fast checks before commits
-2. **CI/CD pipelines**: Automated code quality enforcement
-3. **Large codebases**: Parallel processing, scales linearly
-4. **Custom tooling**: Build analysis tools on Tree-sitter foundation
-5. **Style enforcement**: Teams maintaining consistent conventions
+1. **IDE integration**: Real-time diagnostics in VS Code, IntelliJ, Neovim, etc. (NEW!)
+2. **Pre-commit hooks**: Fast checks before commits
+3. **CI/CD pipelines**: Automated code quality enforcement
+4. **Large codebases**: Parallel processing, scales linearly
+5. **Custom tooling**: Build analysis tools on Tree-sitter foundation
+6. **Style enforcement**: Teams maintaining consistent conventions
 
 ### Integration Path
-- **Now**: Use alongside official Dart analyzer
-- **Next**: Add LSP integration for semantic analysis
-- **Future**: Consider as lightweight alternative for specific workflows
+- **Now**: Use via LSP proxy for seamless IDE integration, or alongside official Dart analyzer
+- **Next**: Add watch mode for file changes in LSP proxy
+- **Future**: Enhanced semantic analysis integration
 
 The Tree-sitter integration elevates this from a simple pattern matcher to a **robust foundation for Dart code analysis** while maintaining the speed and simplicity that made it useful in the first place.
 

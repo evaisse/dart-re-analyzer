@@ -1,6 +1,7 @@
 mod analyzer;
 mod config;
 mod error;
+mod lsp;
 mod mcp;
 mod parser;
 mod rules;
@@ -9,9 +10,10 @@ use analyzer::Rule;
 use clap::{Parser, Subcommand};
 use config::AnalyzerConfig;
 use error::{Diagnostic, Result};
-use mcp::{McpServer, start_mcp_server};
+use lsp::LspProxy;
+use mcp::{start_mcp_server, McpServer};
 use rayon::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[derive(Parser)]
@@ -66,6 +68,20 @@ enum Commands {
         #[arg(default_value = "analyzer_config.json")]
         output: PathBuf,
     },
+    /// Start LSP proxy (forwards to Dart Analysis Server with additional diagnostics)
+    LanguageServer {
+        /// Path to the Dart/Flutter project
+        #[arg(default_value = ".")]
+        path: PathBuf,
+
+        /// Path to dart binary (defaults to 'dart' in PATH)
+        #[arg(long)]
+        dart_binary: Option<String>,
+
+        /// Configuration file path
+        #[arg(long)]
+        config: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -118,6 +134,17 @@ async fn main() -> Result<()> {
             config.save_to_file(&output)?;
             println!("Configuration file created at: {}", output.display());
         }
+        Commands::LanguageServer {
+            path,
+            dart_binary,
+            config,
+        } => {
+            let config = load_config(config)?;
+            let mut proxy = LspProxy::new(dart_binary, config, path);
+
+            eprintln!("Starting LSP proxy...");
+            proxy.run().await?;
+        }
     }
 
     Ok(())
@@ -140,7 +167,7 @@ fn load_config(config_path: Option<PathBuf>) -> Result<AnalyzerConfig> {
 }
 
 fn analyze_project(
-    path: &PathBuf,
+    path: &Path,
     config: &AnalyzerConfig,
     style_only: bool,
     runtime_only: bool,
@@ -174,10 +201,7 @@ fn analyze_project(
     Ok(diagnostics)
 }
 
-fn analyze_parallel(
-    files: &[parser::DartFile],
-    rules: &[Arc<dyn Rule>],
-) -> Vec<Diagnostic> {
+fn analyze_parallel(files: &[parser::DartFile], rules: &[Arc<dyn Rule>]) -> Vec<Diagnostic> {
     files
         .par_iter()
         .flat_map(|file| {
@@ -190,10 +214,7 @@ fn analyze_parallel(
         .collect()
 }
 
-fn analyze_sequential(
-    files: &[parser::DartFile],
-    rules: &[Arc<dyn Rule>],
-) -> Vec<Diagnostic> {
+fn analyze_sequential(files: &[parser::DartFile], rules: &[Arc<dyn Rule>]) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
 
     for file in files {

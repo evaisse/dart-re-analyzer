@@ -1,272 +1,404 @@
-//! LSP (Language Server Protocol) integration for Dart Analysis Server
+//! LSP (Language Server Protocol) integration module
 //!
-//! This module provides integration with the Dart Analysis Server to enable
-//! semantic analysis capabilities including:
-//! - Type resolution and inference
-//! - Null-safety flow analysis
-//! - Symbol resolution across files
-//! - IDE-quality diagnostics
-//!
-//! Note: This is a foundational implementation that demonstrates the architecture.
-//! Full integration requires running the Dart Analysis Server as a separate process
-//! and communicating via JSON-RPC.
+//! This module provides two complementary LSP features:
+//! 
+//! 1. **LSP Proxy** (`LspProxy`) - Forwards messages between IDE and Dart Analysis Server
+//!    while injecting additional diagnostics from dart-re-analyzer rules
+//! 
+//! 2. **Semantic Analysis** (`semantic` module) - Foundational types for semantic analysis
+//!    including type resolution, symbol information, and diagnostics
+//! 
+//! 3. **Client** (`client` module) - Dart Analysis Server client stub
 
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
+use crate::analyzer::Rule;
+use crate::config::AnalyzerConfig;
+use crate::error::Diagnostic;
+use crate::parser;
+use crate::rules;
+
+// Export submodules
 pub mod client;
+pub mod semantic;
 
-/// Represents semantic information about a Dart symbol
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SymbolInfo {
-    /// The name of the symbol
-    pub name: String,
-    /// The kind of symbol (class, function, variable, etc.)
-    pub kind: SymbolKind,
-    /// The resolved type of the symbol
-    pub resolved_type: Option<String>,
-    /// Whether the symbol is nullable
-    pub is_nullable: bool,
-    /// The file where the symbol is defined
-    pub definition_file: PathBuf,
-    /// Line number of the definition
-    pub definition_line: usize,
-    /// Column number of the definition
-    pub definition_column: usize,
+/// LSP message header
+#[derive(Debug)]
+struct LspMessage {
+    #[allow(dead_code)]
+    content_length: usize,
+    content: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SymbolKind {
-    Class,
-    Function,
-    Method,
-    Field,
-    Variable,
-    Parameter,
-    TypeParameter,
-    Enum,
-    Mixin,
-    Extension,
+/// LSP Proxy that forwards messages between client and Dart Analysis Server,
+/// injecting additional diagnostics from dart-re-analyzer
+pub struct LspProxy {
+    dart_process: Option<Child>,
+    dart_stdin: Option<ChildStdin>,
+    dart_stdout: Option<BufReader<ChildStdout>>,
+    dart_binary: Option<String>,
+    config: AnalyzerConfig, // TODO: Use config.exclude_patterns for file filtering
+    rules: Vec<Arc<dyn Rule>>,
+    workspace_root: PathBuf,
+    diagnostics_cache: Arc<Mutex<HashMap<String, Vec<Diagnostic>>>>,
 }
 
-/// Represents a semantic diagnostic from the Dart Analysis Server
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SemanticDiagnostic {
-    /// The diagnostic message
-    pub message: String,
-    /// The severity level
-    pub severity: DiagnosticSeverity,
-    /// The file where the diagnostic applies
-    pub file: PathBuf,
-    /// Start line
-    pub start_line: usize,
-    /// Start column
-    pub start_column: usize,
-    /// End line
-    pub end_line: usize,
-    /// End column
-    pub end_column: usize,
-    /// Diagnostic code (e.g., "undefined_identifier")
-    pub code: Option<String>,
-    /// Suggested fixes
-    pub fixes: Vec<String>,
-}
+impl LspProxy {
+    /// Create a new LSP proxy
+    pub fn new(
+        dart_binary: Option<String>,
+        config: AnalyzerConfig,
+        workspace_root: PathBuf,
+    ) -> Self {
+        let rules = rules::get_all_rules();
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DiagnosticSeverity {
-    Error,
-    Warning,
-    Info,
-    Hint,
-}
-
-/// Type information resolved by the analyzer
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TypeInfo {
-    /// The type name
-    pub name: String,
-    /// Whether the type is nullable
-    pub is_nullable: bool,
-    /// Generic type arguments
-    pub type_arguments: Vec<TypeInfo>,
-    /// Whether this is a function type
-    pub is_function: bool,
-    /// For function types, the return type
-    pub return_type: Option<Box<TypeInfo>>,
-    /// For function types, parameter types
-    pub parameter_types: Vec<TypeInfo>,
-}
-
-/// Interface for semantic analysis operations
-/// 
-/// This trait defines the operations that a semantic analyzer should support.
-/// The actual implementation would communicate with the Dart Analysis Server.
-pub trait SemanticAnalyzer {
-    /// Resolve the type of a symbol at a given position
-    fn resolve_type(&self, file: &PathBuf, line: usize, column: usize) -> Result<Option<TypeInfo>>;
-    
-    /// Get all diagnostics for a file
-    fn get_diagnostics(&self, file: &PathBuf) -> Result<Vec<SemanticDiagnostic>>;
-    
-    /// Find the definition of a symbol at a given position
-    fn find_definition(&self, file: &PathBuf, line: usize, column: usize) -> Result<Option<SymbolInfo>>;
-    
-    /// Find all references to a symbol
-    fn find_references(&self, file: &PathBuf, line: usize, column: usize) -> Result<Vec<SymbolInfo>>;
-    
-    /// Get hover information for a symbol
-    fn get_hover(&self, file: &PathBuf, line: usize, column: usize) -> Result<Option<String>>;
-}
-
-/// Mock implementation for testing and demonstration
-/// 
-/// In production, this would be replaced with an actual LSP client that
-/// communicates with the Dart Analysis Server.
-pub struct MockSemanticAnalyzer {
-    diagnostics: HashMap<PathBuf, Vec<SemanticDiagnostic>>,
-    symbols: HashMap<String, SymbolInfo>,
-}
-
-impl MockSemanticAnalyzer {
-    pub fn new() -> Self {
         Self {
-            diagnostics: HashMap::new(),
-            symbols: HashMap::new(),
+            dart_process: None,
+            dart_stdin: None,
+            dart_stdout: None,
+            dart_binary,
+            config,
+            rules,
+            workspace_root,
+            diagnostics_cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    pub fn add_diagnostic(&mut self, file: PathBuf, diagnostic: SemanticDiagnostic) {
-        self.diagnostics
-            .entry(file)
-            .or_insert_with(Vec::new)
-            .push(diagnostic);
+    /// Start the Dart Analysis Server process
+    pub fn start_dart_server(&mut self) -> Result<()> {
+        let dart_cmd = self
+            .dart_binary
+            .clone()
+            .unwrap_or_else(|| "dart".to_string());
+
+        let mut child = Command::new(&dart_cmd)
+            .arg("language-server")
+            .arg("--protocol=lsp")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .context(format!(
+                "Failed to start Dart Analysis Server. Make sure '{}' is in your PATH.",
+                dart_cmd
+            ))?;
+
+        let stdin = child.stdin.take().context("Failed to capture stdin")?;
+        let stdout = child.stdout.take().context("Failed to capture stdout")?;
+
+        self.dart_stdin = Some(stdin);
+        self.dart_stdout = Some(BufReader::new(stdout));
+        self.dart_process = Some(child);
+
+        eprintln!("Dart Analysis Server started successfully");
+        Ok(())
     }
 
-    pub fn add_symbol(&mut self, name: String, info: SymbolInfo) {
-        self.symbols.insert(name, info);
-    }
-}
+    /// Read an LSP message from a reader
+    ///
+    /// Note: This uses blocking I/O with read_exact(). In production environments with
+    /// unreliable connections, consider adding timeout mechanisms or using async I/O.
+    fn read_message<R: BufRead>(reader: &mut R) -> Result<Option<LspMessage>> {
+        let mut content_length: Option<usize> = None;
+        let mut line = String::new();
 
-impl SemanticAnalyzer for MockSemanticAnalyzer {
-    fn resolve_type(&self, _file: &PathBuf, _line: usize, _column: usize) -> Result<Option<TypeInfo>> {
-        // Mock implementation - would query Dart Analysis Server
-        Ok(Some(TypeInfo {
-            name: "String".to_string(),
-            is_nullable: false,
-            type_arguments: vec![],
-            is_function: false,
-            return_type: None,
-            parameter_types: vec![],
+        // Read headers
+        loop {
+            line.clear();
+            let bytes_read = reader.read_line(&mut line)?;
+
+            if bytes_read == 0 {
+                return Ok(None); // EOF
+            }
+
+            let line = line.trim();
+
+            if line.is_empty() {
+                break; // End of headers
+            }
+
+            if let Some(value) = line.strip_prefix("Content-Length: ") {
+                content_length = Some(value.parse()?);
+            }
+        }
+
+        let content_length = content_length.context("Missing Content-Length header")?;
+
+        // Read content
+        let mut content = vec![0u8; content_length];
+        reader.read_exact(&mut content)?;
+
+        Ok(Some(LspMessage {
+            content_length,
+            content: String::from_utf8(content)?,
         }))
     }
 
-    fn get_diagnostics(&self, file: &PathBuf) -> Result<Vec<SemanticDiagnostic>> {
-        Ok(self.diagnostics.get(file).cloned().unwrap_or_default())
+    /// Write an LSP message to a writer
+    fn write_message<W: Write>(writer: &mut W, content: &str) -> Result<()> {
+        write!(
+            writer,
+            "Content-Length: {}\r\n\r\n{}",
+            content.len(),
+            content
+        )?;
+        writer.flush()?;
+        Ok(())
     }
 
-    fn find_definition(&self, _file: &PathBuf, _line: usize, _column: usize) -> Result<Option<SymbolInfo>> {
-        // Mock implementation
-        Ok(None)
+    /// Convert dart-re-analyzer diagnostic to LSP diagnostic format
+    fn diagnostic_to_lsp(diag: &Diagnostic) -> Value {
+        let severity = match diag.severity {
+            crate::error::Severity::Error => 1,   // Error
+            crate::error::Severity::Warning => 2, // Warning
+            crate::error::Severity::Info => 3,    // Information
+        };
+
+        json!({
+            "range": {
+                "start": {
+                    "line": diag.location.line.saturating_sub(1), // LSP is 0-indexed
+                    "character": diag.location.column.saturating_sub(1)
+                },
+                "end": {
+                    "line": diag.location.line.saturating_sub(1),
+                    "character": diag.location.column.saturating_sub(1) + 1
+                }
+            },
+            "severity": severity,
+            "code": diag.rule_id,
+            "source": "dart-re-analyzer",
+            "message": diag.message,
+        })
     }
 
-    fn find_references(&self, _file: &PathBuf, _line: usize, _column: usize) -> Result<Vec<SymbolInfo>> {
-        // Mock implementation
-        Ok(vec![])
+    /// Run the LSP proxy loop
+    pub async fn run(&mut self) -> Result<()> {
+        // Start dart server
+        self.start_dart_server()?;
+
+        // Take ownership of the streams
+        let mut dart_stdin = self.dart_stdin.take().context("Dart stdin not available")?;
+        let dart_stdout = self
+            .dart_stdout
+            .take()
+            .context("Dart stdout not available")?;
+
+        let (client_tx, mut client_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (server_tx, mut server_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+
+        // Spawn thread to read from client (stdin)
+        let client_tx_clone = client_tx.clone();
+        std::thread::spawn(move || {
+            let stdin = std::io::stdin();
+            let mut reader = BufReader::new(stdin);
+            loop {
+                match LspProxy::read_message(&mut reader) {
+                    Ok(Some(msg)) => {
+                        if client_tx_clone.send(msg.content).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(None) => break, // EOF
+                    Err(e) => {
+                        eprintln!("Error reading from client: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Spawn thread to read from Dart server
+        let server_tx_clone = server_tx.clone();
+        let mut dart_stdout_reader = dart_stdout;
+        std::thread::spawn(move || {
+            loop {
+                match LspProxy::read_message(&mut dart_stdout_reader) {
+                    Ok(Some(msg)) => {
+                        if server_tx_clone.send(msg.content).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(None) => break, // EOF
+                    Err(e) => {
+                        eprintln!("Error reading from Dart server: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+
+        let mut initialized = false;
+        let diagnostics_cache = Arc::clone(&self.diagnostics_cache);
+        let workspace_root = self.workspace_root.clone();
+        let rules = self.rules.clone();
+
+        // Main event loop
+        let mut stdout = std::io::stdout();
+        loop {
+            tokio::select! {
+                // Message from client to server
+                Some(content) = client_rx.recv() => {
+                    // Parse message
+                    if let Ok(msg) = serde_json::from_str::<Value>(&content) {
+                        // Check for initialize request
+                        if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
+                            if method == "initialize" {
+                                eprintln!("LSP initialize request received");
+                                // We'll run analysis after initialized
+                            }
+                        }
+
+                        // Forward to Dart server
+                        Self::write_message(&mut dart_stdin, &content)?;
+                    }
+                }
+
+                // Message from server to client
+                Some(content) = server_rx.recv() => {
+                    // Parse message
+                    if let Ok(mut msg) = serde_json::from_str::<Value>(&content) {
+                        // Check for initialized notification
+                        if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
+                            if method == "initialized" && !initialized {
+                                initialized = true;
+                                // Analyze workspace in background
+                                let cache_clone = Arc::clone(&diagnostics_cache);
+                                let workspace_clone = workspace_root.clone();
+                                let rules_clone = rules.clone();
+                                tokio::spawn(async move {
+                                    if let Err(e) = Self::analyze_workspace_static(
+                                        &workspace_clone,
+                                        &rules_clone,
+                                        cache_clone
+                                    ).await {
+                                        eprintln!("Error analyzing workspace: {}", e);
+                                    }
+                                });
+                            }
+                        }
+
+                        // Inject our diagnostics if applicable
+                        Self::inject_diagnostics_static(&mut msg, &diagnostics_cache).await?;
+
+                        // Write to client
+                        let modified_content = serde_json::to_string(&msg)?;
+                        Self::write_message(&mut stdout, &modified_content)?;
+                    } else {
+                        // Forward as-is if we can't parse
+                        Self::write_message(&mut stdout, &content)?;
+                    }
+                }
+
+                else => {
+                    break;
+                }
+            }
+        }
+
+        Ok(())
     }
 
-    fn get_hover(&self, _file: &PathBuf, _line: usize, _column: usize) -> Result<Option<String>> {
-        // Mock implementation
-        Ok(Some("Type: String".to_string()))
+    /// Static version of analyze_workspace
+    async fn analyze_workspace_static(
+        workspace_root: &Path,
+        rules: &[Arc<dyn Rule>],
+        cache: Arc<Mutex<HashMap<String, Vec<Diagnostic>>>>,
+    ) -> Result<()> {
+        eprintln!("Analyzing workspace: {}", workspace_root.display());
+
+        let files = parser::find_dart_files(workspace_root)?;
+        eprintln!("Found {} Dart files to analyze", files.len());
+
+        let mut cache_lock = cache.lock().await;
+        cache_lock.clear();
+
+        for file in &files {
+            let path = PathBuf::from(&file.path);
+            let mut file_diagnostics = Vec::new();
+
+            for rule in rules {
+                if let Ok(diags) = rule.check(&path, &file.content) {
+                    file_diagnostics.extend(diags);
+                }
+            }
+
+            if !file_diagnostics.is_empty() {
+                cache_lock.insert(file.path.clone(), file_diagnostics);
+            }
+        }
+
+        eprintln!(
+            "Analysis complete. Found diagnostics in {} files",
+            cache_lock.len()
+        );
+        Ok(())
+    }
+
+    /// Static version of inject_diagnostics
+    async fn inject_diagnostics_static(
+        message: &mut Value,
+        cache: &Arc<Mutex<HashMap<String, Vec<Diagnostic>>>>,
+    ) -> Result<()> {
+        // Check if this is a publishDiagnostics notification
+        if let Some(method) = message.get("method").and_then(|m| m.as_str()) {
+            if method == "textDocument/publishDiagnostics" {
+                if let Some(params) = message.get_mut("params") {
+                    if let Some(uri) = params.get("uri").and_then(|u| u.as_str()) {
+                        // Convert URI to file path
+                        let file_path = uri.strip_prefix("file://").unwrap_or(uri);
+
+                        // Get cached diagnostics for this file
+                        let cache_lock = cache.lock().await;
+                        if let Some(our_diagnostics) = cache_lock.get(file_path) {
+                            // Get existing diagnostics array
+                            let diagnostics_array =
+                                params.get_mut("diagnostics").and_then(|d| d.as_array_mut());
+
+                            if let Some(diags) = diagnostics_array {
+                                // Add our diagnostics
+                                for our_diag in our_diagnostics {
+                                    diags.push(LspProxy::diagnostic_to_lsp(our_diag));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_mock_analyzer_resolve_type() {
-        let analyzer = MockSemanticAnalyzer::new();
-        let file = PathBuf::from("test.dart");
-        
-        let result = analyzer.resolve_type(&file, 0, 0).unwrap();
-        assert!(result.is_some());
-        
-        let type_info = result.unwrap();
-        assert_eq!(type_info.name, "String");
-        assert!(!type_info.is_nullable);
+impl Clone for LspProxy {
+    /// Creates a new LspProxy with the same configuration but no process handles.
+    /// The cloned instance will need start_dart_server() called before use.
+    /// This is primarily used for spawning background analysis tasks.
+    fn clone(&self) -> Self {
+        Self {
+            dart_process: None,
+            dart_stdin: None,
+            dart_stdout: None,
+            dart_binary: self.dart_binary.clone(),
+            config: self.config.clone(),
+            rules: self.rules.clone(),
+            workspace_root: self.workspace_root.clone(),
+            diagnostics_cache: Arc::clone(&self.diagnostics_cache),
+        }
     }
+}
 
-    #[test]
-    fn test_mock_analyzer_diagnostics() {
-        let mut analyzer = MockSemanticAnalyzer::new();
-        let file = PathBuf::from("test.dart");
-        
-        analyzer.add_diagnostic(
-            file.clone(),
-            SemanticDiagnostic {
-                message: "Undefined name 'foo'".to_string(),
-                severity: DiagnosticSeverity::Error,
-                file: file.clone(),
-                start_line: 1,
-                start_column: 5,
-                end_line: 1,
-                end_column: 8,
-                code: Some("undefined_identifier".to_string()),
-                fixes: vec!["Import 'dart:core'".to_string()],
-            },
-        );
-        
-        let diagnostics = analyzer.get_diagnostics(&file).unwrap();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].message, "Undefined name 'foo'");
-    }
-
-    #[test]
-    fn test_symbol_info_creation() {
-        let symbol = SymbolInfo {
-            name: "MyClass".to_string(),
-            kind: SymbolKind::Class,
-            resolved_type: Some("MyClass".to_string()),
-            is_nullable: false,
-            definition_file: PathBuf::from("lib/my_class.dart"),
-            definition_line: 10,
-            definition_column: 6,
-        };
-        
-        assert_eq!(symbol.name, "MyClass");
-        assert_eq!(symbol.kind, SymbolKind::Class);
-        assert!(!symbol.is_nullable);
-    }
-
-    #[test]
-    fn test_type_info_creation() {
-        let type_info = TypeInfo {
-            name: "List".to_string(),
-            is_nullable: false,
-            type_arguments: vec![TypeInfo {
-                name: "String".to_string(),
-                is_nullable: false,
-                type_arguments: vec![],
-                is_function: false,
-                return_type: None,
-                parameter_types: vec![],
-            }],
-            is_function: false,
-            return_type: None,
-            parameter_types: vec![],
-        };
-        
-        assert_eq!(type_info.name, "List");
-        assert_eq!(type_info.type_arguments.len(), 1);
-        assert_eq!(type_info.type_arguments[0].name, "String");
-    }
-
-    #[test]
-    fn test_diagnostic_severity() {
-        assert_eq!(DiagnosticSeverity::Error, DiagnosticSeverity::Error);
-        assert_ne!(DiagnosticSeverity::Error, DiagnosticSeverity::Warning);
+impl Drop for LspProxy {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.dart_process.take() {
+            let _ = child.kill();
+        }
     }
 }

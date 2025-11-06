@@ -1,4 +1,4 @@
-use crate::error::{AnalyzerError, Result};
+use crate::error::Result;
 use std::path::Path;
 
 pub struct DartFile {
@@ -25,9 +25,9 @@ pub fn is_dart_file(path: &Path) -> bool {
 
 pub fn find_dart_files(root: &Path) -> Result<Vec<DartFile>> {
     use walkdir::WalkDir;
-    
+
     let mut files = Vec::new();
-    
+
     for entry in WalkDir::new(root)
         .follow_links(true)
         .into_iter()
@@ -37,16 +37,17 @@ pub fn find_dart_files(root: &Path) -> Result<Vec<DartFile>> {
         if path.is_file() && is_dart_file(path) {
             // Skip common excluded directories
             let path_str = path.to_string_lossy();
-            if path_str.contains("/.dart_tool/") 
+            if path_str.contains("/.dart_tool/")
                 || path_str.contains("/build/")
                 || path_str.contains("/.pub/")
-                || path_str.contains("/packages/") {
+                || path_str.contains("/packages/")
+            {
                 continue;
             }
-            
+
             files.push(DartFile::load(path)?);
         }
     }
-    
+
     Ok(files)
 }
