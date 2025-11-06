@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
-use tree_sitter::{Node, Parser, Query, QueryCursor, Tree, StreamingIterator, InputEdit, Point as TSPoint};
+use tree_sitter::{
+    InputEdit, Node, Parser, Point as TSPoint, Query, QueryCursor, StreamingIterator, Tree,
+};
 
 /// Initialize a Tree-sitter parser configured for Dart
 pub fn create_dart_parser() -> Result<Parser> {
@@ -38,7 +40,8 @@ impl IncrementalParser {
     /// Parse initial source code
     pub fn parse(&mut self, source: &str) -> Result<&Tree> {
         self.source = source.to_string();
-        self.tree = self.parser
+        self.tree = self
+            .parser
             .parse(source, None)
             .context("Failed to parse Dart source code")?
             .into();
@@ -46,18 +49,18 @@ impl IncrementalParser {
     }
 
     /// Apply an edit and incrementally re-parse
-    /// 
+    ///
     /// # Arguments
     /// * `edit` - The edit to apply (describes position, old/new text lengths)
     /// * `new_source` - The new source code after the edit
-    /// 
+    ///
     /// # Example
     /// ```no_run
     /// use dart_re_analyzer::treesitter::{IncrementalParser, Edit};
-    /// 
+    ///
     /// let mut parser = IncrementalParser::new().unwrap();
     /// parser.parse("class MyClass {}").unwrap();
-    /// 
+    ///
     /// // Edit: insert " extends Object" at position 13
     /// let edit = Edit {
     ///     start_byte: 13,
@@ -67,7 +70,7 @@ impl IncrementalParser {
     ///     old_end_position: (0, 13),
     ///     new_end_position: (0, 29),
     /// };
-    /// 
+    ///
     /// parser.reparse(edit, "class MyClass extends Object {}").unwrap();
     /// ```
     pub fn reparse(&mut self, edit: Edit, new_source: &str) -> Result<&Tree> {
@@ -93,9 +96,10 @@ impl IncrementalParser {
 
             tree.edit(&input_edit);
             self.source = new_source.to_string();
-            
+
             // Parse incrementally using the edited tree
-            self.tree = self.parser
+            self.tree = self
+                .parser
                 .parse(new_source, Some(tree))
                 .context("Failed to reparse Dart source code")?
                 .into();
@@ -143,9 +147,10 @@ impl IncrementalParser {
             }
 
             self.source = new_source.to_string();
-            
+
             // Parse incrementally using the edited tree
-            self.tree = self.parser
+            self.tree = self
+                .parser
                 .parse(new_source, Some(tree))
                 .context("Failed to reparse Dart source code")?
                 .into();
@@ -176,7 +181,7 @@ pub struct Edit {
 
 impl Edit {
     /// Create an edit that inserts text at a position
-    /// 
+    ///
     /// Note: For multi-line insertions, calculate row/column positions carefully.
     /// The new_end_position should account for newlines in the inserted text.
     pub fn insert(position: usize, text_len: usize, row: usize, col: usize) -> Self {
@@ -192,7 +197,14 @@ impl Edit {
     }
 
     /// Create an edit that deletes text from start to end
-    pub fn delete(start: usize, end: usize, start_row: usize, start_col: usize, end_row: usize, end_col: usize) -> Self {
+    pub fn delete(
+        start: usize,
+        end: usize,
+        start_row: usize,
+        start_col: usize,
+        end_row: usize,
+        end_col: usize,
+    ) -> Self {
         Self {
             start_byte: start,
             old_end_byte: end,
@@ -204,6 +216,7 @@ impl Edit {
     }
 
     /// Create an edit that replaces text from start to end with new text
+    #[allow(clippy::too_many_arguments)]
     pub fn replace(
         start: usize,
         old_end: usize,
@@ -240,58 +253,62 @@ pub struct QueryCapture<'a> {
 }
 
 /// Execute a tree-sitter query on the parsed tree
-/// 
+///
 /// # Example Query Patterns
-/// 
+///
 /// Find all class definitions:
 /// ```text
 /// (class_definition name: (identifier) @class.name)
 /// ```
-/// 
+///
 /// Find all method calls:
 /// ```text
-/// (selector_expression 
+/// (selector_expression
 ///   field: (argument_part) @method.call)
 /// ```
-/// 
+///
 /// Find all dynamic type usage:
 /// ```text
 /// (type_identifier) @type (#eq? @type "dynamic")
 /// ```
-pub fn query_tree<'a>(tree: &'a Tree, source: &str, query_str: &str) -> Result<Vec<QueryMatch<'a>>> {
+pub fn query_tree<'a>(
+    tree: &'a Tree,
+    source: &str,
+    query_str: &str,
+) -> Result<Vec<QueryMatch<'a>>> {
     let language = tree_sitter_dart::language();
-    let query = Query::new(&language, query_str)
-        .context("Failed to parse tree-sitter query")?;
-    
+    let query = Query::new(&language, query_str).context("Failed to parse tree-sitter query")?;
+
     let mut cursor = QueryCursor::new();
     let mut matches_iter = cursor.matches(&query, tree.root_node(), source.as_bytes());
-    
+
     let capture_names = query.capture_names();
     let mut results = Vec::new();
-    
+
     // Use StreamingIterator to iterate through matches
     while let Some(m) = matches_iter.next() {
         let mut captures = Vec::new();
         for capture in m.captures {
             let name = capture_names[capture.index as usize].to_string();
-            let text = capture.node
+            let text = capture
+                .node
                 .utf8_text(source.as_bytes())
                 .unwrap_or("<error>")
                 .to_string();
-            
+
             captures.push(QueryCapture {
                 name,
                 node: capture.node,
                 text,
             });
         }
-        
+
         results.push(QueryMatch {
             pattern_index: m.pattern_index,
             captures,
         });
     }
-    
+
     Ok(results)
 }
 
@@ -302,7 +319,7 @@ pub mod queries {
         (class_definition 
           name: (identifier) @class.name) @class.def
     "#;
-    
+
     /// Find all method/function definitions
     pub const METHODS: &str = r#"
         [
@@ -310,45 +327,45 @@ pub mod queries {
           (function_signature) @function.def
         ]
     "#;
-    
+
     /// Find all field declarations in classes
     pub const FIELDS: &str = r#"
         (class_member_definition
           (declaration) @field.decl)
     "#;
-    
+
     /// Find all import statements
     pub const IMPORTS: &str = r#"
         (import_or_export) @import.stmt
     "#;
-    
+
     /// Find all dynamic type usage
     pub const DYNAMIC_TYPES: &str = r#"
         (type_identifier) @type.name
         (#eq? @type.name "dynamic")
     "#;
-    
+
     /// Find all print statements
     pub const PRINT_CALLS: &str = r#"
         (selector_expression
           (identifier) @function (#eq? @function "print")
           (argument_part) @args)
     "#;
-    
+
     /// Find empty catch blocks
     pub const EMPTY_CATCH: &str = r#"
         (catch_clause
           body: (block) @catch.body
           (#match? @catch.body "^\\{\\s*\\}$"))
     "#;
-    
+
     /// Find null assertion operators
     pub const NULL_ASSERTIONS: &str = r#"
         (postfix_expression
           (identifier)
           "!" @null.assertion)
     "#;
-    
+
     /// Find all variable declarations with type annotations
     pub const TYPED_VARIABLES: &str = r#"
         (local_variable_declaration
@@ -356,7 +373,7 @@ pub mod queries {
             (type_identifier) @var.type
             (identifier) @var.name))
     "#;
-    
+
     /// Find generic type parameters
     pub const TYPE_PARAMETERS: &str = r#"
         (type_parameter
@@ -631,14 +648,17 @@ fn extract_fields_recursive<'a>(node: Node<'a>, source: &str, fields: &mut Vec<D
                             // Find the identifier within this list
                             let mut id_cursor = decl_child.walk();
                             for id_child in decl_child.children(&mut id_cursor) {
-                                if id_child.kind() == "initialized_identifier" 
-                                    || id_child.kind() == "static_final_declaration" 
-                                    || id_child.kind() == "identifier" {
+                                if id_child.kind() == "initialized_identifier"
+                                    || id_child.kind() == "static_final_declaration"
+                                    || id_child.kind() == "identifier"
+                                {
                                     // Get the first identifier
                                     let mut name_cursor = id_child.walk();
                                     for name_child in id_child.children(&mut name_cursor) {
                                         if name_child.kind() == "identifier" {
-                                            if let Ok(name) = name_child.utf8_text(source.as_bytes()) {
+                                            if let Ok(name) =
+                                                name_child.utf8_text(source.as_bytes())
+                                            {
                                                 field_name = Some(name.to_string());
                                                 break;
                                             }
@@ -1053,13 +1073,16 @@ class MyClass {
         let fields = extract_fields(&tree, source);
 
         assert!(!fields.is_empty(), "Should extract at least one field");
-        
+
         // Check for specific field properties
         let has_static = fields.iter().any(|f| f.is_static);
         let has_final = fields.iter().any(|f| f.is_final);
         let has_const = fields.iter().any(|f| f.is_const);
-        
-        assert!(has_static || has_final || has_const, "Should detect field modifiers");
+
+        assert!(
+            has_static || has_final || has_const,
+            "Should detect field modifiers"
+        );
     }
 
     #[test]
@@ -1077,10 +1100,10 @@ void main() {
         let variables = extract_variables(&tree, source);
 
         assert!(!variables.is_empty(), "Should extract variables");
-        
+
         let has_final = variables.iter().any(|v| v.is_final);
         let has_const = variables.iter().any(|v| v.is_const);
-        
+
         assert!(has_final || has_const, "Should detect variable modifiers");
     }
 
@@ -1098,13 +1121,19 @@ class MyClass {
         let tree = parse_dart(source).expect("Failed to parse");
         let type_annotations = extract_type_annotations(&tree, source);
 
-        assert!(!type_annotations.is_empty(), "Should extract type annotations");
-        
+        assert!(
+            !type_annotations.is_empty(),
+            "Should extract type annotations"
+        );
+
         // Check for common types
         let has_string = type_annotations.iter().any(|t| t.type_name == "String");
         let has_int = type_annotations.iter().any(|t| t.type_name == "int");
-        
-        assert!(has_string || has_int, "Should detect common type annotations");
+
+        assert!(
+            has_string || has_int,
+            "Should detect common type annotations"
+        );
     }
 
     #[test]
@@ -1124,12 +1153,15 @@ class SimpleGeneric<T> {
         let type_params = extract_type_parameters(&tree, source);
 
         assert!(!type_params.is_empty(), "Should extract type parameters");
-        
+
         // Check for type parameter with bound
-        let has_bounded = type_params.iter().any(|p| p.bound.is_some());
-        
+        let _has_bounded = type_params.iter().any(|p| p.bound.is_some());
+
         // At least one type parameter should exist
-        assert!(type_params.len() >= 1, "Should find at least one type parameter");
+        assert!(
+            !type_params.is_empty(),
+            "Should find at least one type parameter"
+        );
     }
 
     #[test]
@@ -1150,14 +1182,15 @@ void main() {
         let expressions = extract_expressions(&tree, source);
 
         assert!(!expressions.is_empty(), "Should extract expressions");
-        
+
         // Should find various expression types
         let has_binary = expressions.iter().any(|e| e.kind == "binary_expression");
-        let has_literal = expressions.iter().any(|e| {
-            e.kind.contains("literal")
-        });
-        
-        assert!(has_binary || has_literal, "Should detect various expression types");
+        let has_literal = expressions.iter().any(|e| e.kind.contains("literal"));
+
+        assert!(
+            has_binary || has_literal,
+            "Should detect various expression types"
+        );
     }
 
     #[test]
@@ -1171,14 +1204,15 @@ class SecondClass {}
         let matches = query_tree(&tree, source, queries::CLASSES).expect("Query failed");
 
         assert!(!matches.is_empty(), "Should find classes");
-        
+
         // Check we found class names
-        let class_names: Vec<_> = matches.iter()
+        let class_names: Vec<_> = matches
+            .iter()
             .flat_map(|m| &m.captures)
             .filter(|c| c.name == "class.name")
             .map(|c| c.text.as_str())
             .collect();
-        
+
         assert!(class_names.contains(&"FirstClass") || class_names.contains(&"SecondClass"));
     }
 
@@ -1207,19 +1241,20 @@ class TestClass {
         "#;
 
         let tree = parse_dart(source).expect("Failed to parse");
-        
+
         // Custom query to find integer literals
         let query_str = r#"(decimal_integer_literal) @number"#;
         let matches = query_tree(&tree, source, query_str).expect("Query failed");
 
         assert!(!matches.is_empty(), "Should find integer literals");
-        
-        let numbers: Vec<_> = matches.iter()
+
+        let numbers: Vec<_> = matches
+            .iter()
             .flat_map(|m| &m.captures)
             .filter(|c| c.name == "number")
             .map(|c| c.text.as_str())
             .collect();
-        
+
         assert!(numbers.contains(&"42"), "Should find the number 42");
     }
 
@@ -1257,7 +1292,7 @@ class MyClass {}
     fn test_incremental_parser_initial() {
         let mut parser = IncrementalParser::new().expect("Failed to create parser");
         let source = "class MyClass {}";
-        
+
         let tree = parser.parse(source).expect("Failed to parse");
         assert_eq!(tree.root_node().kind(), "program");
         assert_eq!(parser.source(), source);
@@ -1273,10 +1308,10 @@ class MyClass {}
         // Position: "class MyClass" (13 chars) + " extends Object" (15 chars)
         let edit = Edit::insert(13, 15, 0, 13);
         let new_source = "class MyClass extends Object {}";
-        
+
         let tree = parser.reparse(edit, new_source).expect("Failed to reparse");
         assert!(!tree.root_node().has_error(), "Tree should not have errors");
-        
+
         // Verify we can still extract the class
         let classes = extract_classes(tree, new_source);
         assert_eq!(classes.len(), 1);
@@ -1292,10 +1327,10 @@ class MyClass {}
         // Delete " extends Object" (from position 13 to 28)
         let edit = Edit::delete(13, 28, 0, 13, 0, 28);
         let new_source = "class MyClass {}";
-        
+
         let tree = parser.reparse(edit, new_source).expect("Failed to reparse");
         assert!(!tree.root_node().has_error(), "Tree should not have errors");
-        
+
         let classes = extract_classes(tree, new_source);
         assert_eq!(classes.len(), 1);
         assert_eq!(classes[0].name, "MyClass");
@@ -1310,10 +1345,10 @@ class MyClass {}
         // Replace "OldName" with "NewName" (position 6 to 13, length 7)
         let edit = Edit::replace(6, 13, 7, 0, 6, 0, 13, 13);
         let new_source = "class NewName {}";
-        
+
         let tree = parser.reparse(edit, new_source).expect("Failed to reparse");
         assert!(!tree.root_node().has_error(), "Tree should not have errors");
-        
+
         let classes = extract_classes(tree, new_source);
         assert_eq!(classes.len(), 1);
         assert_eq!(classes[0].name, "NewName");
@@ -1326,14 +1361,18 @@ class MyClass {}
         parser.parse(initial).expect("Failed to parse initial");
 
         // Make multiple insertions
-        let edit1 = Edit::insert(7, 13, 0, 7);  // Insert " implements X" after "class A"
+        let edit1 = Edit::insert(7, 13, 0, 7); // Insert " implements X" after "class A"
         let new_source1 = "class A implements X {} class B {}";
-        parser.reparse(edit1, new_source1).expect("Failed to reparse 1");
+        parser
+            .reparse(edit1, new_source1)
+            .expect("Failed to reparse 1");
 
-        let edit2 = Edit::insert(31, 13, 0, 31);  // Insert " implements Y" after "class B"
+        let edit2 = Edit::insert(31, 13, 0, 31); // Insert " implements Y" after "class B"
         let new_source2 = "class A implements X {} class B implements Y {}";
-        
-        let tree = parser.reparse(edit2, new_source2).expect("Failed to reparse 2");
+
+        let tree = parser
+            .reparse(edit2, new_source2)
+            .expect("Failed to reparse 2");
         let classes = extract_classes(tree, new_source2);
         assert_eq!(classes.len(), 2);
     }
@@ -1350,10 +1389,12 @@ class MyClass {}
             Edit::insert(7, 5, 0, 7),   // Insert "Final" after "class A"
             Edit::insert(17, 5, 0, 17), // Insert "Final" after "class B" (original position)
         ];
-        
+
         let new_source = "class AFinal {} class BFinal {}";
-        let tree = parser.reparse_with_edits(&edits, new_source).expect("Failed to reparse");
-        
+        let tree = parser
+            .reparse_with_edits(&edits, new_source)
+            .expect("Failed to reparse");
+
         let classes = extract_classes(tree, new_source);
         assert_eq!(classes.len(), 2);
         // Note: Testing that batch edits work correctly

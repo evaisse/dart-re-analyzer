@@ -1,13 +1,13 @@
 //! LSP (Language Server Protocol) integration module
 //!
 //! This module provides two complementary LSP features:
-//! 
+//!
 //! 1. **LSP Proxy** (`LspProxy`) - Forwards messages between IDE and Dart Analysis Server
 //!    while injecting additional diagnostics from dart-re-analyzer rules
-//! 
+//!
 //! 2. **Semantic Analysis** (`semantic` module) - Foundational types for semantic analysis
 //!    including type resolution, symbol information, and diagnostics
-//! 
+//!
 //! 3. **Client** (`client` module) - Dart Analysis Server client stub
 
 use anyhow::{Context, Result};

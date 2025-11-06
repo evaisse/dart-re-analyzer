@@ -9,11 +9,12 @@
 //! - Handling async requests/responses
 //! - Managing server lifecycle
 
-use anyhow::{Result, Context};
+use anyhow::Result;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 /// Configuration for the Dart Analysis Server
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct DartAnalysisServerConfig {
     /// Path to the Dart SDK
@@ -38,7 +39,9 @@ impl Default for DartAnalysisServerConfig {
         } else if cfg!(target_os = "macos") {
             (
                 PathBuf::from("/usr/local/opt/dart"),
-                PathBuf::from("/usr/local/opt/dart/libexec/bin/snapshots/analysis_server.dart.snapshot"),
+                PathBuf::from(
+                    "/usr/local/opt/dart/libexec/bin/snapshots/analysis_server.dart.snapshot",
+                ),
             )
         } else {
             // Linux/Unix default
@@ -58,13 +61,14 @@ impl Default for DartAnalysisServerConfig {
 }
 
 /// Client for communicating with Dart Analysis Server
-/// 
+///
 /// This is a stub implementation showing the intended architecture.
 /// A full implementation would:
 /// 1. Start the analysis server as a subprocess
 /// 2. Communicate via JSON-RPC over stdin/stdout
 /// 3. Handle notifications and requests asynchronously
 /// 4. Manage server lifecycle (start, restart, shutdown)
+#[allow(dead_code)]
 pub struct DartAnalysisServerClient {
     config: DartAnalysisServerConfig,
     // In a full implementation, this would include:
@@ -75,6 +79,7 @@ pub struct DartAnalysisServerClient {
     // - pending_requests: Arc<Mutex<HashMap<u64, Sender<Response>>>>
 }
 
+#[allow(dead_code)]
 impl DartAnalysisServerClient {
     /// Create a new client with the given configuration
     pub fn new(config: DartAnalysisServerConfig) -> Result<Self> {
@@ -82,7 +87,7 @@ impl DartAnalysisServerClient {
     }
 
     /// Start the Dart Analysis Server
-    /// 
+    ///
     /// This is a stub that shows how to start the server.
     /// A full implementation would manage the process and communication.
     pub fn start(&mut self) -> Result<()> {
@@ -92,9 +97,9 @@ impl DartAnalysisServerClient {
         // 3. Initialize LSP communication
         // 4. Send initialization request
         // 5. Wait for initialized notification
-        
+
         let _dart_path = self.config.dart_sdk_path.join("bin").join("dart");
-        
+
         // Example command that would be used:
         // let mut cmd = Command::new(dart_path)
         //     .arg(&self.config.analysis_server_snapshot)
@@ -103,14 +108,18 @@ impl DartAnalysisServerClient {
         //     .stderr(if self.config.verbose { Stdio::inherit() } else { Stdio::null() })
         //     .spawn()
         //     .context("Failed to start Dart Analysis Server")?;
-        
+
         Ok(())
     }
 
     /// Send a request to the analysis server
-    /// 
+    ///
     /// Stub showing the intended interface.
-    pub async fn send_request(&self, _method: &str, _params: serde_json::Value) -> Result<serde_json::Value> {
+    pub async fn send_request(
+        &self,
+        _method: &str,
+        _params: serde_json::Value,
+    ) -> Result<serde_json::Value> {
         // In a full implementation:
         // 1. Generate request ID
         // 2. Create oneshot channel for response
@@ -118,19 +127,19 @@ impl DartAnalysisServerClient {
         // 4. Serialize and send request over stdin
         // 5. Await response on channel
         // 6. Return response or timeout error
-        
+
         Ok(serde_json::json!({}))
     }
 
     /// Send a notification to the analysis server
-    /// 
+    ///
     /// Stub showing the intended interface.
     pub fn send_notification(&self, _method: &str, _params: serde_json::Value) -> Result<()> {
         // In a full implementation:
         // 1. Serialize notification
         // 2. Send over stdin
         // 3. Return immediately (no response expected)
-        
+
         Ok(())
     }
 
@@ -141,19 +150,20 @@ impl DartAnalysisServerClient {
         // 2. Wait for response
         // 3. Send exit notification
         // 4. Wait for process to exit or timeout and kill
-        
+
         Ok(())
     }
 }
 
 /// Example helper to find Dart SDK
+#[allow(dead_code)]
 pub fn find_dart_sdk() -> Result<PathBuf> {
     // Try common locations
     let mut possible_paths = vec![
         PathBuf::from("/usr/lib/dart"),
         PathBuf::from("/usr/local/opt/dart"),
     ];
-    
+
     // Add home directory path if available
     if let Some(home) = dirs::home_dir() {
         possible_paths.push(home.join(".pub-cache").join("bin"));
