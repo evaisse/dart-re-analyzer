@@ -16,6 +16,9 @@ pub enum AnalyzerError {
 
     #[error("MCP server error: {0}")]
     McpServer(String),
+
+    #[error("LSP proxy error: {0}")]
+    LspProxy(#[from] anyhow::Error),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

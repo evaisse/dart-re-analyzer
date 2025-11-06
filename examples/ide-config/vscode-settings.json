@@ -1,0 +1,24 @@
+{
+  "// Note": "This is an example VS Code settings file for dart-re-analyzer LSP proxy",
+  "// Usage": "Copy relevant settings to your .vscode/settings.json",
+  
+  "dart.analysisServerPath": "/path/to/dart-re-analyzer",
+  "dart.analysisServerArgs": [
+    "language-server"
+  ],
+  
+  "// For custom config": "Uncomment and adjust the following:",
+  "// dart.analysisServerArgs": [
+  "//   \"language-server\",",
+  "//   \"--config\",",
+  "//   \"analyzer_config.json\"",
+  "// ],",
+  
+  "// Optional": "Disable standard Dart analysis server features that overlap",
+  "dart.showTodos": false,
+  
+  "// Recommended": "File associations for Dart",
+  "files.associations": {
+    "*.dart": "dart"
+  }
+}
