@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -16,6 +16,7 @@ use crate::rules;
 /// LSP message header
 #[derive(Debug)]
 struct LspMessage {
+    #[allow(dead_code)]
     content_length: usize,
     content: String,
 }
@@ -291,7 +292,7 @@ impl LspProxy {
 
     /// Static version of analyze_workspace
     async fn analyze_workspace_static(
-        workspace_root: &PathBuf,
+        workspace_root: &Path,
         rules: &[Arc<dyn Rule>],
         cache: Arc<Mutex<HashMap<String, Vec<Diagnostic>>>>,
     ) -> Result<()> {
