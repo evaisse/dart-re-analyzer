@@ -1,24 +1,24 @@
+use crate::error::{AnalyzerError, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use crate::error::{AnalyzerError, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalyzerConfig {
     #[serde(default = "default_enabled")]
     pub enabled: bool,
-    
+
     #[serde(default)]
     pub exclude_patterns: Vec<String>,
-    
+
     #[serde(default)]
     pub style_rules: RuleSetConfig,
-    
+
     #[serde(default)]
     pub runtime_rules: RuleSetConfig,
-    
+
     #[serde(default = "default_max_line_length")]
     pub max_line_length: usize,
-    
+
     #[serde(default = "default_parallel")]
     pub parallel: bool,
 }
@@ -27,7 +27,7 @@ pub struct AnalyzerConfig {
 pub struct RuleSetConfig {
     #[serde(default = "default_enabled")]
     pub enabled: bool,
-    
+
     #[serde(default)]
     pub disabled_rules: Vec<String>,
 }
@@ -78,21 +78,22 @@ impl AnalyzerConfig {
             .map_err(|e| AnalyzerError::Config(format!("Failed to parse config: {}", e)))?;
         Ok(config)
     }
-    
+
     pub fn save_to_file(&self, path: &Path) -> Result<()> {
         let content = serde_json::to_string_pretty(self)
             .map_err(|e| AnalyzerError::Config(format!("Failed to serialize config: {}", e)))?;
         std::fs::write(path, content)?;
         Ok(())
     }
-    
+
+    #[allow(dead_code)]
     pub fn is_rule_enabled(&self, rule_name: &str, is_style: bool) -> bool {
         let rule_set = if is_style {
             &self.style_rules
         } else {
             &self.runtime_rules
         };
-        
+
         rule_set.enabled && !rule_set.disabled_rules.contains(&rule_name.to_string())
     }
 }

@@ -38,11 +38,19 @@ impl Rule for CamelCaseClassNameRule {
                 if let Some(class_name) = caps.get(1) {
                     let name = class_name.as_str();
                     // Check if first character is uppercase and name follows CamelCase
-                    if !name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                    if !name
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false)
+                    {
                         diagnostics.push(
                             Diagnostic::new(
                                 self.name(),
-                                format!("Class name '{}' should use CamelCase (start with uppercase)", name),
+                                format!(
+                                    "Class name '{}' should use CamelCase (start with uppercase)",
+                                    name
+                                ),
                                 Severity::Warning,
                                 RuleCategory::Style,
                                 Location {
@@ -53,10 +61,7 @@ impl Rule for CamelCaseClassNameRule {
                                     end_column: Some(class_name.end() + 1),
                                 },
                             )
-                            .with_suggestion(format!(
-                                "Rename to '{}'",
-                                to_camel_case(name)
-                            )),
+                            .with_suggestion(format!("Rename to '{}'", to_camel_case(name))),
                         );
                     }
                 }
@@ -117,16 +122,16 @@ impl Rule for PrivateFieldUnderscoreRule {
 
     fn check(&self, _file_path: &Path, content: &str) -> Result<Vec<Diagnostic>> {
         let diagnostics = Vec::new();
-        
+
         // Note: This is a placeholder implementation
         // A full implementation would require AST parsing to properly distinguish
         // between private and public fields based on Dart's visibility rules
         // (fields without _ are public, fields with _ are private)
-        
+
         // The simple regex check is insufficient because it can't determine
         // the intent - whether a field without _ should be private or not
-        
-        for (_line_num, line) in content.lines().enumerate() {
+
+        for line in content.lines() {
             if let Some(_caps) = field_regex().captures(line) {
                 // Placeholder: would need semantic analysis here
             }
@@ -160,8 +165,11 @@ impl Rule for LineLengthRule {
                 diagnostics.push(
                     Diagnostic::new(
                         self.name(),
-                        format!("Line exceeds maximum length of {} characters (actual: {})", 
-                            self.max_length, line.len()),
+                        format!(
+                            "Line exceeds maximum length of {} characters (actual: {})",
+                            self.max_length,
+                            line.len()
+                        ),
                         Severity::Info,
                         RuleCategory::Style,
                         Location {
@@ -185,7 +193,7 @@ impl Rule for LineLengthRule {
 fn to_camel_case(s: &str) -> String {
     let mut result = String::new();
     let mut capitalize_next = true;
-    
+
     for c in s.chars() {
         if c == '_' {
             capitalize_next = true;
@@ -196,13 +204,13 @@ fn to_camel_case(s: &str) -> String {
             result.push(c);
         }
     }
-    
+
     result
 }
 
 fn to_snake_case(s: &str) -> String {
     let mut result = String::new();
-    
+
     for (i, c) in s.chars().enumerate() {
         if c.is_uppercase() {
             if i > 0 {
@@ -213,6 +221,6 @@ fn to_snake_case(s: &str) -> String {
             result.push(c);
         }
     }
-    
+
     result
 }
