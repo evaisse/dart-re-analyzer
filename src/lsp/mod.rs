@@ -27,7 +27,7 @@ pub struct LspProxy {
     dart_stdin: Option<ChildStdin>,
     dart_stdout: Option<BufReader<ChildStdout>>,
     dart_binary: Option<String>,
-    config: AnalyzerConfig,  // TODO: Use config.exclude_patterns for file filtering
+    config: AnalyzerConfig, // TODO: Use config.exclude_patterns for file filtering
     rules: Vec<Arc<dyn Rule>>,
     workspace_root: PathBuf,
     diagnostics_cache: Arc<Mutex<HashMap<String, Vec<Diagnostic>>>>,
@@ -35,9 +35,13 @@ pub struct LspProxy {
 
 impl LspProxy {
     /// Create a new LSP proxy
-    pub fn new(dart_binary: Option<String>, config: AnalyzerConfig, workspace_root: PathBuf) -> Self {
+    pub fn new(
+        dart_binary: Option<String>,
+        config: AnalyzerConfig,
+        workspace_root: PathBuf,
+    ) -> Self {
         let rules = rules::get_all_rules();
-        
+
         Self {
             dart_process: None,
             dart_stdin: None,
@@ -52,8 +56,11 @@ impl LspProxy {
 
     /// Start the Dart Analysis Server process
     pub fn start_dart_server(&mut self) -> Result<()> {
-        let dart_cmd = self.dart_binary.clone().unwrap_or_else(|| "dart".to_string());
-        
+        let dart_cmd = self
+            .dart_binary
+            .clone()
+            .unwrap_or_else(|| "dart".to_string());
+
         let mut child = Command::new(&dart_cmd)
             .arg("language-server")
             .arg("--protocol=lsp")
@@ -61,7 +68,10 @@ impl LspProxy {
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
-            .context(format!("Failed to start Dart Analysis Server. Make sure '{}' is in your PATH.", dart_cmd))?;
+            .context(format!(
+                "Failed to start Dart Analysis Server. Make sure '{}' is in your PATH.",
+                dart_cmd
+            ))?;
 
         let stdin = child.stdin.take().context("Failed to capture stdin")?;
         let stdout = child.stdout.take().context("Failed to capture stdout")?;
@@ -75,7 +85,7 @@ impl LspProxy {
     }
 
     /// Read an LSP message from a reader
-    /// 
+    ///
     /// Note: This uses blocking I/O with read_exact(). In production environments with
     /// unreliable connections, consider adding timeout mechanisms or using async I/O.
     fn read_message<R: BufRead>(reader: &mut R) -> Result<Option<LspMessage>> {
@@ -86,13 +96,13 @@ impl LspProxy {
         loop {
             line.clear();
             let bytes_read = reader.read_line(&mut line)?;
-            
+
             if bytes_read == 0 {
                 return Ok(None); // EOF
             }
 
             let line = line.trim();
-            
+
             if line.is_empty() {
                 break; // End of headers
             }
@@ -116,7 +126,12 @@ impl LspProxy {
 
     /// Write an LSP message to a writer
     fn write_message<W: Write>(writer: &mut W, content: &str) -> Result<()> {
-        write!(writer, "Content-Length: {}\r\n\r\n{}", content.len(), content)?;
+        write!(
+            writer,
+            "Content-Length: {}\r\n\r\n{}",
+            content.len(),
+            content
+        )?;
         writer.flush()?;
         Ok(())
     }
@@ -154,8 +169,11 @@ impl LspProxy {
 
         // Take ownership of the streams
         let mut dart_stdin = self.dart_stdin.take().context("Dart stdin not available")?;
-        let dart_stdout = self.dart_stdout.take().context("Dart stdout not available")?;
-        
+        let dart_stdout = self
+            .dart_stdout
+            .take()
+            .context("Dart stdout not available")?;
+
         let (client_tx, mut client_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         let (server_tx, mut server_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
 
@@ -275,13 +293,13 @@ impl LspProxy {
     async fn analyze_workspace_static(
         workspace_root: &PathBuf,
         rules: &[Arc<dyn Rule>],
-        cache: Arc<Mutex<HashMap<String, Vec<Diagnostic>>>>
+        cache: Arc<Mutex<HashMap<String, Vec<Diagnostic>>>>,
     ) -> Result<()> {
         eprintln!("Analyzing workspace: {}", workspace_root.display());
-        
+
         let files = parser::find_dart_files(workspace_root)?;
         eprintln!("Found {} Dart files to analyze", files.len());
-        
+
         let mut cache_lock = cache.lock().await;
         cache_lock.clear();
 
@@ -300,14 +318,17 @@ impl LspProxy {
             }
         }
 
-        eprintln!("Analysis complete. Found diagnostics in {} files", cache_lock.len());
+        eprintln!(
+            "Analysis complete. Found diagnostics in {} files",
+            cache_lock.len()
+        );
         Ok(())
     }
 
     /// Static version of inject_diagnostics
     async fn inject_diagnostics_static(
         message: &mut Value,
-        cache: &Arc<Mutex<HashMap<String, Vec<Diagnostic>>>>
+        cache: &Arc<Mutex<HashMap<String, Vec<Diagnostic>>>>,
     ) -> Result<()> {
         // Check if this is a publishDiagnostics notification
         if let Some(method) = message.get("method").and_then(|m| m.as_str()) {
@@ -316,14 +337,13 @@ impl LspProxy {
                     if let Some(uri) = params.get("uri").and_then(|u| u.as_str()) {
                         // Convert URI to file path
                         let file_path = uri.strip_prefix("file://").unwrap_or(uri);
-                        
+
                         // Get cached diagnostics for this file
                         let cache_lock = cache.lock().await;
                         if let Some(our_diagnostics) = cache_lock.get(file_path) {
                             // Get existing diagnostics array
-                            let diagnostics_array = params
-                                .get_mut("diagnostics")
-                                .and_then(|d| d.as_array_mut());
+                            let diagnostics_array =
+                                params.get_mut("diagnostics").and_then(|d| d.as_array_mut());
 
                             if let Some(diags) = diagnostics_array {
                                 // Add our diagnostics
