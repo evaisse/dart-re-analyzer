@@ -372,6 +372,14 @@ cargo build
 cargo test
 ```
 
+### Run integration tests
+Test dart-re-analyzer on a real Dart project:
+```bash
+./test_analyzer.sh
+```
+
+This script runs the analyzer on `test_project/` which contains Dart code samples designed to test all analyzer rules and features.
+
 ### Run with debug output
 ```bash
 RUST_LOG=debug cargo run -- analyze .
