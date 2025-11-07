@@ -22,7 +22,11 @@ echo ""
 echo "Test 2: JSON output format"
 echo "-------------------------------------"
 OUTPUT_JSON=$($ANALYZER analyze test_project --format json || true)
-echo "$OUTPUT_JSON" | jq '.' 2>/dev/null || echo "$OUTPUT_JSON"
+if command -v jq &> /dev/null; then
+    echo "$OUTPUT_JSON" | jq '.' 2>/dev/null || echo "$OUTPUT_JSON"
+else
+    echo "$OUTPUT_JSON"
+fi
 
 # Test 3: Style rules only
 echo ""
