@@ -18,11 +18,12 @@ class badClassName {
   String someField = 'test';
 }
 
-// Bad: private field without underscore (violates private_field_underscore)
+// Note: private_field_underscore rule is registered but not yet implemented
+// This class demonstrates what should be checked when the rule is complete
 class ClassWithBadPrivateField {
   String _goodPrivateField = 'good';
-  // This should be _badPrivateField according to the rule if it's meant to be private
-  String badPrivateField = 'should have underscore if private';
+  // When implemented, the rule might check for fields that should be private
+  String badPrivateField = 'public field - naming is okay';
 }
 
 // Bad: line too long (violates line_length rule - default max is 120 characters)
