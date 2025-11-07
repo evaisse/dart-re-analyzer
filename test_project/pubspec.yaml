@@ -1,0 +1,10 @@
+name: dart_analyzer_test_project
+description: A test project to validate dart-re-analyzer functionality
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  # No dependencies needed for testing the analyzer
