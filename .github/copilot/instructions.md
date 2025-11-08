@@ -1,5 +1,8 @@
 # GitHub Copilot Instructions for dart-re-analyzer
 
+> **Note**: These instructions help GitHub Copilot understand the project structure, conventions, and best practices. 
+> They are automatically used by Copilot when providing code suggestions and assistance in this repository.
+
 This project is a high-performance Rust-based Dart/Flutter code analyzer with MCP server support.
 
 ## Project Overview
@@ -164,3 +167,22 @@ time ./target/release/dart-re-analyzer analyze <large-flutter-project>
 ## Language Server Configuration
 - **Rust**: rust-analyzer is configured for this workspace
 - **Dart**: Dart language server is available for understanding Dart patterns
+
+## Working with GitHub Copilot
+
+### Effective Prompts
+When working with Copilot in this project, use clear, specific prompts:
+- ✅ "Add a new style rule to check that method names use camelCase"
+- ✅ "Create a tree-sitter query to find all dynamic type usages"
+- ✅ "Add tests for the avoid_empty_catch rule"
+- ❌ "Make the code better" (too vague)
+
+### Code Review with Copilot
+- Ask Copilot to review your code changes before committing
+- Request explanations for complex Rust patterns or tree-sitter queries
+- Get suggestions for improving performance or test coverage
+
+### Learning Resources
+- Ask Copilot to explain Rust ownership/borrowing in specific code sections
+- Request examples of tree-sitter query patterns for Dart syntax
+- Get help understanding regex patterns used in rules
