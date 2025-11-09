@@ -1,0 +1,32 @@
+title: Dart Re-Analyzer
+description: A high-performance Rust-based Dart/Flutter analyzer focused on code quality, conventions, and runtime safety
+theme: jekyll-theme-cayman
+baseurl: /dart-re-analyzer
+url: https://evaisse.github.io
+
+# Navigation
+navigation:
+  - title: Home
+    url: /
+  - title: Rules
+    url: /rules
+  - title: LSP
+    url: /lsp
+  - title: MCP Server
+    url: /mcp
+  - title: Quick Start
+    url: /quickstart
+
+# Build settings
+markdown: kramdown
+plugins:
+  - jekyll-relative-links
+
+relative_links:
+  enabled: true
+  collections: false
+
+# Exclude files
+exclude:
+  - TREESITTER.md
+  - LSP_PROXY.md

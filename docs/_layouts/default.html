@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page.title | default: site.title }}</title>
+    <link rel="stylesheet" href="{{ '/assets/css/style.css?v=' | append: site.github.build_revision | relative_url }}">
+  </head>
+  <body>
+    <div class="container-lg px-3 my-5 markdown-body">
+      <header>
+        <h1><a href="{{ '/' | relative_url }}">{{ site.title | default: site.github.repository_name }}</a></h1>
+        <p>{{ site.description | default: site.github.project_tagline }}</p>
+        
+        <nav style="margin: 20px 0; padding: 10px 0; border-top: 1px solid #e1e4e8; border-bottom: 1px solid #e1e4e8;">
+          <a href="{{ '/' | relative_url }}" style="margin-right: 15px;">Home</a>
+          <a href="{{ '/quickstart' | relative_url }}" style="margin-right: 15px;">Quick Start</a>
+          <a href="{{ '/rules' | relative_url }}" style="margin-right: 15px;">Rules</a>
+          <a href="{{ '/mcp' | relative_url }}" style="margin-right: 15px;">MCP Server</a>
+          <a href="{{ '/lsp' | relative_url }}" style="margin-right: 15px;">LSP</a>
+          <a href="{{ '/lsp-proxy' | relative_url }}" style="margin-right: 15px;">LSP Proxy</a>
+          <a href="{{ site.github.repository_url }}" style="margin-right: 15px;">GitHub</a>
+        </nav>
+      </header>
+
+      <main>
+        {{ content }}
+      </main>
+
+      <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e1e4e8; color: #586069; font-size: 14px;">
+        <p>
+          <a href="{{ site.github.repository_url }}">View on GitHub</a> • 
+          <a href="{{ site.github.repository_url }}/issues">Report an Issue</a> • 
+          License: MIT
+        </p>
+        <p>© {{ 'now' | date: "%Y" }} Emmanuel Vaisse</p>
+      </footer>
+    </div>
+  </body>
+</html>
